@@ -1,0 +1,732 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:Reference Uri="https://sap.github.io/odata-vocabularies/vocabularies/Common.xml">
+    <edmx:Include Alias="Common" Namespace="com.sap.vocabularies.Common.v1"/>
+  </edmx:Reference>
+  <edmx:Reference Uri="https://oasis-tcs.github.io/odata-vocabularies/vocabularies/Org.OData.Core.V1.xml">
+    <edmx:Include Alias="Core" Namespace="Org.OData.Core.V1"/>
+  </edmx:Reference>
+  <edmx:Reference Uri="https://sap.github.io/odata-vocabularies/vocabularies/UI.xml">
+    <edmx:Include Alias="UI" Namespace="com.sap.vocabularies.UI.v1"/>
+  </edmx:Reference>
+  <edmx:Reference Uri="https://oasis-tcs.github.io/odata-vocabularies/vocabularies/Org.OData.Validation.V1.xml">
+    <edmx:Include Alias="Validation" Namespace="Org.OData.Validation.V1"/>
+  </edmx:Reference>
+  <edmx:DataServices>
+    <Schema Namespace="PerformanceService" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <Annotation Term="Core.Links">
+        <Collection>
+          <Record>
+            <PropertyValue Property="rel" String="author"/>
+            <PropertyValue Property="href" String="https://cap.cloud.sap"/>
+          </Record>
+        </Collection>
+      </Annotation>
+      <EntityContainer Name="EntityContainer">
+        <EntitySet Name="WricefObjects" EntityType="PerformanceService.WricefObjects">
+          <NavigationPropertyBinding Path="items" Target="WricefItems"/>
+          <NavigationPropertyBinding Path="documents" Target="DocumentationObjects"/>
+        </EntitySet>
+        <EntitySet Name="WricefItems" EntityType="PerformanceService.WricefItems">
+          <NavigationPropertyBinding Path="wricef" Target="WricefObjects"/>
+          <NavigationPropertyBinding Path="tickets" Target="Tickets"/>
+        </EntitySet>
+        <EntitySet Name="Tickets" EntityType="PerformanceService.Tickets">
+          <NavigationPropertyBinding Path="wricefItem" Target="WricefItems"/>
+          <NavigationPropertyBinding Path="history" Target="TicketEvents"/>
+        </EntitySet>
+        <EntitySet Name="TicketEvents" EntityType="PerformanceService.TicketEvents">
+          <NavigationPropertyBinding Path="ticket" Target="Tickets"/>
+        </EntitySet>
+        <EntitySet Name="DocumentationObjects" EntityType="PerformanceService.DocumentationObjects">
+          <NavigationPropertyBinding Path="wricefObject" Target="WricefObjects"/>
+          <NavigationPropertyBinding Path="attachments" Target="DocumentationAttachments"/>
+        </EntitySet>
+        <EntitySet Name="DocumentationAttachments" EntityType="PerformanceService.DocumentationAttachments">
+          <NavigationPropertyBinding Path="document" Target="DocumentationObjects"/>
+        </EntitySet>
+        <EntitySet Name="TicketComments" EntityType="PerformanceService.TicketComments">
+          <NavigationPropertyBinding Path="ticket" Target="Tickets"/>
+        </EntitySet>
+        <ActionImport Name="uploadWricefExcel" Action="PerformanceService.uploadWricefExcel" EntitySet="WricefObjects"/>
+        <FunctionImport Name="nextTicketCode" Function="PerformanceService.nextTicketCode"/>
+      </EntityContainer>
+      <EntityType Name="WricefObjects">
+        <Key>
+          <PropertyRef Name="ID"/>
+        </Key>
+        <Property Name="ID" Type="Edm.Guid" Nullable="false"/>
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" Precision="7"/>
+        <Property Name="createdBy" Type="Edm.String" MaxLength="255"/>
+        <Property Name="modifiedAt" Type="Edm.DateTimeOffset" Precision="7"/>
+        <Property Name="modifiedBy" Type="Edm.String" MaxLength="255"/>
+        <Property Name="projectId" Type="Edm.String" MaxLength="100"/>
+        <Property Name="wricefId" Type="Edm.String" MaxLength="50"/>
+        <Property Name="type" Type="Edm.String" MaxLength="1"/>
+        <Property Name="title" Type="Edm.String" MaxLength="500"/>
+        <Property Name="description" Type="Edm.String" MaxLength="5000"/>
+        <Property Name="complexity" Type="Edm.String" MaxLength="20" DefaultValue="MOYEN"/>
+        <Property Name="module" Type="Edm.String" MaxLength="10" DefaultValue="OTHER"/>
+        <NavigationProperty Name="items" Type="Collection(PerformanceService.WricefItems)" Partner="wricef">
+          <OnDelete Action="Cascade"/>
+        </NavigationProperty>
+        <NavigationProperty Name="documents" Type="Collection(PerformanceService.DocumentationObjects)" Partner="wricefObject">
+          <OnDelete Action="Cascade"/>
+        </NavigationProperty>
+      </EntityType>
+      <EntityType Name="WricefItems">
+        <Key>
+          <PropertyRef Name="ID"/>
+        </Key>
+        <Property Name="ID" Type="Edm.Guid" Nullable="false"/>
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" Precision="7"/>
+        <Property Name="createdBy" Type="Edm.String" MaxLength="255"/>
+        <Property Name="modifiedAt" Type="Edm.DateTimeOffset" Precision="7"/>
+        <Property Name="modifiedBy" Type="Edm.String" MaxLength="255"/>
+        <NavigationProperty Name="wricef" Type="PerformanceService.WricefObjects" Partner="items">
+          <ReferentialConstraint Property="wricef_ID" ReferencedProperty="ID"/>
+        </NavigationProperty>
+        <Property Name="wricef_ID" Type="Edm.Guid"/>
+        <Property Name="objectId" Type="Edm.String" MaxLength="50"/>
+        <Property Name="title" Type="Edm.String" MaxLength="500"/>
+        <Property Name="description" Type="Edm.String" MaxLength="5000"/>
+        <NavigationProperty Name="tickets" Type="Collection(PerformanceService.Tickets)" Partner="wricefItem">
+          <OnDelete Action="Cascade"/>
+        </NavigationProperty>
+      </EntityType>
+      <EntityType Name="Tickets">
+        <Key>
+          <PropertyRef Name="ID"/>
+        </Key>
+        <Property Name="ID" Type="Edm.Guid" Nullable="false"/>
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" Precision="7"/>
+        <Property Name="createdBy" Type="Edm.String" MaxLength="100"/>
+        <Property Name="modifiedAt" Type="Edm.DateTimeOffset" Precision="7"/>
+        <Property Name="modifiedBy" Type="Edm.String" MaxLength="255"/>
+        <Property Name="ticketCode" Type="Edm.String" MaxLength="30"/>
+        <Property Name="projectId" Type="Edm.String" MaxLength="100"/>
+        <NavigationProperty Name="wricefItem" Type="PerformanceService.WricefItems" Partner="tickets">
+          <ReferentialConstraint Property="wricefItem_ID" ReferencedProperty="ID"/>
+        </NavigationProperty>
+        <Property Name="wricefItem_ID" Type="Edm.Guid"/>
+        <Property Name="assignedTo" Type="Edm.String" MaxLength="100"/>
+        <Property Name="assignedToRole" Type="Edm.String" MaxLength="30"/>
+        <Property Name="status" Type="Edm.String" MaxLength="20" DefaultValue="NEW"/>
+        <Property Name="priority" Type="Edm.String" MaxLength="20" DefaultValue="MEDIUM"/>
+        <Property Name="nature" Type="Edm.String" MaxLength="20"/>
+        <Property Name="title" Type="Edm.String" MaxLength="500"/>
+        <Property Name="description" Type="Edm.String" MaxLength="5000"/>
+        <Property Name="dueDate" Type="Edm.Date"/>
+        <Property Name="effortHours" Type="Edm.Decimal" Precision="8" Scale="2" DefaultValue="0"/>
+        <Property Name="effortComment" Type="Edm.String" MaxLength="2000"/>
+        <Property Name="functionalTesterId" Type="Edm.String" MaxLength="100"/>
+        <Property Name="tags" Type="Edm.String" MaxLength="1000"/>
+        <Property Name="module" Type="Edm.String" MaxLength="10" DefaultValue="OTHER"/>
+        <Property Name="estimationHours" Type="Edm.Decimal" Precision="8" Scale="2" DefaultValue="0"/>
+        <Property Name="complexity" Type="Edm.String" MaxLength="20" DefaultValue="MOYEN"/>
+        <Property Name="estimatedViaAbaque" Type="Edm.Boolean" DefaultValue="false"/>
+        <NavigationProperty Name="history" Type="Collection(PerformanceService.TicketEvents)" Partner="ticket">
+          <OnDelete Action="Cascade"/>
+        </NavigationProperty>
+      </EntityType>
+      <EntityType Name="TicketEvents">
+        <Key>
+          <PropertyRef Name="ID"/>
+        </Key>
+        <Property Name="ID" Type="Edm.Guid" Nullable="false"/>
+        <NavigationProperty Name="ticket" Type="PerformanceService.Tickets" Partner="history">
+          <ReferentialConstraint Property="ticket_ID" ReferencedProperty="ID"/>
+        </NavigationProperty>
+        <Property Name="ticket_ID" Type="Edm.Guid"/>
+        <Property Name="timestamp" Type="Edm.DateTimeOffset" Precision="7"/>
+        <Property Name="userId" Type="Edm.String" MaxLength="100"/>
+        <Property Name="action" Type="Edm.String" MaxLength="20"/>
+        <Property Name="fromValue" Type="Edm.String" MaxLength="500"/>
+        <Property Name="toValue" Type="Edm.String" MaxLength="500"/>
+        <Property Name="comment" Type="Edm.String" MaxLength="2000"/>
+      </EntityType>
+      <EntityType Name="DocumentationObjects">
+        <Key>
+          <PropertyRef Name="ID"/>
+        </Key>
+        <Property Name="ID" Type="Edm.Guid" Nullable="false"/>
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" Precision="7"/>
+        <Property Name="createdBy" Type="Edm.String" MaxLength="255"/>
+        <Property Name="modifiedAt" Type="Edm.DateTimeOffset" Precision="7"/>
+        <Property Name="modifiedBy" Type="Edm.String" MaxLength="255"/>
+        <NavigationProperty Name="wricefObject" Type="PerformanceService.WricefObjects" Partner="documents">
+          <ReferentialConstraint Property="wricefObject_ID" ReferencedProperty="ID"/>
+        </NavigationProperty>
+        <Property Name="wricefObject_ID" Type="Edm.Guid"/>
+        <Property Name="projectId" Type="Edm.String" MaxLength="100"/>
+        <Property Name="title" Type="Edm.String" MaxLength="500"/>
+        <Property Name="description" Type="Edm.String" MaxLength="5000"/>
+        <Property Name="type" Type="Edm.String" MaxLength="20" DefaultValue="GENERAL"/>
+        <Property Name="content" Type="Edm.String"/>
+        <Property Name="authorId" Type="Edm.String" MaxLength="100"/>
+        <NavigationProperty Name="attachments" Type="Collection(PerformanceService.DocumentationAttachments)" Partner="document">
+          <OnDelete Action="Cascade"/>
+        </NavigationProperty>
+      </EntityType>
+      <EntityType Name="DocumentationAttachments">
+        <Key>
+          <PropertyRef Name="ID"/>
+        </Key>
+        <Property Name="ID" Type="Edm.Guid" Nullable="false"/>
+        <NavigationProperty Name="document" Type="PerformanceService.DocumentationObjects" Partner="attachments">
+          <ReferentialConstraint Property="document_ID" ReferencedProperty="ID"/>
+        </NavigationProperty>
+        <Property Name="document_ID" Type="Edm.Guid"/>
+        <Property Name="filename" Type="Edm.String" MaxLength="500"/>
+        <Property Name="size" Type="Edm.Int32"/>
+        <Property Name="url" Type="Edm.String" MaxLength="1000"/>
+      </EntityType>
+      <EntityType Name="TicketComments">
+        <Key>
+          <PropertyRef Name="ID"/>
+        </Key>
+        <Property Name="ID" Type="Edm.Guid" Nullable="false"/>
+        <NavigationProperty Name="ticket" Type="PerformanceService.Tickets">
+          <ReferentialConstraint Property="ticket_ID" ReferencedProperty="ID"/>
+        </NavigationProperty>
+        <Property Name="ticket_ID" Type="Edm.Guid"/>
+        <Property Name="userId" Type="Edm.String" MaxLength="100"/>
+        <Property Name="userRole" Type="Edm.String" MaxLength="30"/>
+        <Property Name="message" Type="Edm.String" MaxLength="5000"/>
+        <Property Name="timestamp" Type="Edm.DateTimeOffset" Precision="7"/>
+      </EntityType>
+      <Action Name="uploadWricefExcel" IsBound="false">
+        <Parameter Name="projectId" Type="Edm.String"/>
+        <Parameter Name="base64File" Type="Edm.String"/>
+        <ReturnType Type="Collection(PerformanceService.WricefObjects)"/>
+      </Action>
+      <Function Name="nextTicketCode" IsBound="false" IsComposable="false">
+        <ReturnType Type="Edm.String"/>
+      </Function>
+      <Annotations Target="PerformanceService.WricefObjects/ID">
+        <Annotation Term="Core.ComputedDefaultValue" Bool="true"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefObjects/createdAt">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Immutable" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Common.Label" String="{i18n>CreatedAt}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefObjects/createdBy">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Immutable" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Core.Description" String="{i18n>UserID.Description}"/>
+        <Annotation Term="Common.Label" String="{i18n>CreatedBy}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefObjects/modifiedAt">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Common.Label" String="{i18n>ChangedAt}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefObjects/modifiedBy">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Core.Description" String="{i18n>UserID.Description}"/>
+        <Annotation Term="Common.Label" String="{i18n>ChangedBy}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefObjects/projectId">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefObjects/wricefId">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefObjects/type">
+        <Annotation Term="Validation.AllowedValues">
+          <Collection>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="W"/>
+              <PropertyValue Property="Value" String="W"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="R"/>
+              <PropertyValue Property="Value" String="R"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="I"/>
+              <PropertyValue Property="Value" String="I"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="C"/>
+              <PropertyValue Property="Value" String="C"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="E"/>
+              <PropertyValue Property="Value" String="E"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="F"/>
+              <PropertyValue Property="Value" String="F"/>
+            </Record>
+          </Collection>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefObjects/title">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefObjects/complexity">
+        <Annotation Term="Validation.AllowedValues">
+          <Collection>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="SIMPLE"/>
+              <PropertyValue Property="Value" String="SIMPLE"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="MOYEN"/>
+              <PropertyValue Property="Value" String="MOYEN"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="COMPLEXE"/>
+              <PropertyValue Property="Value" String="COMPLEXE"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="TRES_COMPLEXE"/>
+              <PropertyValue Property="Value" String="TRES_COMPLEXE"/>
+            </Record>
+          </Collection>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefObjects/module">
+        <Annotation Term="Validation.AllowedValues">
+          <Collection>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="FI"/>
+              <PropertyValue Property="Value" String="FI"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="CO"/>
+              <PropertyValue Property="Value" String="CO"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="MM"/>
+              <PropertyValue Property="Value" String="MM"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="SD"/>
+              <PropertyValue Property="Value" String="SD"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="PP"/>
+              <PropertyValue Property="Value" String="PP"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="PM"/>
+              <PropertyValue Property="Value" String="PM"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="QM"/>
+              <PropertyValue Property="Value" String="QM"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="HR"/>
+              <PropertyValue Property="Value" String="HR"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="PS"/>
+              <PropertyValue Property="Value" String="PS"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="WM"/>
+              <PropertyValue Property="Value" String="WM"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="BASIS"/>
+              <PropertyValue Property="Value" String="BASIS"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="ABAP"/>
+              <PropertyValue Property="Value" String="ABAP"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="FIORI"/>
+              <PropertyValue Property="Value" String="FIORI"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="BW"/>
+              <PropertyValue Property="Value" String="BW"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="OTHER"/>
+              <PropertyValue Property="Value" String="OTHER"/>
+            </Record>
+          </Collection>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefItems/ID">
+        <Annotation Term="Core.ComputedDefaultValue" Bool="true"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefItems/createdAt">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Immutable" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Common.Label" String="{i18n>CreatedAt}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefItems/createdBy">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Immutable" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Core.Description" String="{i18n>UserID.Description}"/>
+        <Annotation Term="Common.Label" String="{i18n>CreatedBy}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefItems/modifiedAt">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Common.Label" String="{i18n>ChangedAt}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefItems/modifiedBy">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Core.Description" String="{i18n>UserID.Description}"/>
+        <Annotation Term="Common.Label" String="{i18n>ChangedBy}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefItems/wricef_ID">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefItems/objectId">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.WricefItems/title">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.Tickets/ID">
+        <Annotation Term="Core.ComputedDefaultValue" Bool="true"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.Tickets/createdAt">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Immutable" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Common.Label" String="{i18n>CreatedAt}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.Tickets/createdBy">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.Tickets/modifiedAt">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Common.Label" String="{i18n>ChangedAt}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.Tickets/modifiedBy">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Core.Description" String="{i18n>UserID.Description}"/>
+        <Annotation Term="Common.Label" String="{i18n>ChangedBy}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.Tickets/projectId">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.Tickets/status">
+        <Annotation Term="Validation.AllowedValues">
+          <Collection>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="NEW"/>
+              <PropertyValue Property="Value" String="NEW"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="IN_PROGRESS"/>
+              <PropertyValue Property="Value" String="IN_PROGRESS"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="IN_TEST"/>
+              <PropertyValue Property="Value" String="IN_TEST"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="BLOCKED"/>
+              <PropertyValue Property="Value" String="BLOCKED"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="DONE"/>
+              <PropertyValue Property="Value" String="DONE"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="REJECTED"/>
+              <PropertyValue Property="Value" String="REJECTED"/>
+            </Record>
+          </Collection>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="PerformanceService.Tickets/priority">
+        <Annotation Term="Validation.AllowedValues">
+          <Collection>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="LOW"/>
+              <PropertyValue Property="Value" String="LOW"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="MEDIUM"/>
+              <PropertyValue Property="Value" String="MEDIUM"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="HIGH"/>
+              <PropertyValue Property="Value" String="HIGH"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="CRITICAL"/>
+              <PropertyValue Property="Value" String="CRITICAL"/>
+            </Record>
+          </Collection>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="PerformanceService.Tickets/nature">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+        <Annotation Term="Validation.AllowedValues">
+          <Collection>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="WORKFLOW"/>
+              <PropertyValue Property="Value" String="WORKFLOW"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="FORMULAIRE"/>
+              <PropertyValue Property="Value" String="FORMULAIRE"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="PROGRAMME"/>
+              <PropertyValue Property="Value" String="PROGRAMME"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="ENHANCEMENT"/>
+              <PropertyValue Property="Value" String="ENHANCEMENT"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="MODULE"/>
+              <PropertyValue Property="Value" String="MODULE"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="REPORT"/>
+              <PropertyValue Property="Value" String="REPORT"/>
+            </Record>
+          </Collection>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="PerformanceService.Tickets/title">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.Tickets/module">
+        <Annotation Term="Validation.AllowedValues">
+          <Collection>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="FI"/>
+              <PropertyValue Property="Value" String="FI"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="CO"/>
+              <PropertyValue Property="Value" String="CO"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="MM"/>
+              <PropertyValue Property="Value" String="MM"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="SD"/>
+              <PropertyValue Property="Value" String="SD"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="PP"/>
+              <PropertyValue Property="Value" String="PP"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="PM"/>
+              <PropertyValue Property="Value" String="PM"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="QM"/>
+              <PropertyValue Property="Value" String="QM"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="HR"/>
+              <PropertyValue Property="Value" String="HR"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="PS"/>
+              <PropertyValue Property="Value" String="PS"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="WM"/>
+              <PropertyValue Property="Value" String="WM"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="BASIS"/>
+              <PropertyValue Property="Value" String="BASIS"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="ABAP"/>
+              <PropertyValue Property="Value" String="ABAP"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="FIORI"/>
+              <PropertyValue Property="Value" String="FIORI"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="BW"/>
+              <PropertyValue Property="Value" String="BW"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="OTHER"/>
+              <PropertyValue Property="Value" String="OTHER"/>
+            </Record>
+          </Collection>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="PerformanceService.Tickets/complexity">
+        <Annotation Term="Validation.AllowedValues">
+          <Collection>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="SIMPLE"/>
+              <PropertyValue Property="Value" String="SIMPLE"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="MOYEN"/>
+              <PropertyValue Property="Value" String="MOYEN"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="COMPLEXE"/>
+              <PropertyValue Property="Value" String="COMPLEXE"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="TRES_COMPLEXE"/>
+              <PropertyValue Property="Value" String="TRES_COMPLEXE"/>
+            </Record>
+          </Collection>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="PerformanceService.TicketEvents/ID">
+        <Annotation Term="Core.ComputedDefaultValue" Bool="true"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.TicketEvents/timestamp">
+        <Annotation Term="Core.Computed" Bool="true"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.TicketEvents/action">
+        <Annotation Term="Validation.AllowedValues">
+          <Collection>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="CREATED"/>
+              <PropertyValue Property="Value" String="CREATED"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="STATUS_CHANGE"/>
+              <PropertyValue Property="Value" String="STATUS_CHANGE"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="ASSIGNED"/>
+              <PropertyValue Property="Value" String="ASSIGNED"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="COMMENT"/>
+              <PropertyValue Property="Value" String="COMMENT"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="PRIORITY_CHANGE"/>
+              <PropertyValue Property="Value" String="PRIORITY_CHANGE"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="EFFORT_CHANGE"/>
+              <PropertyValue Property="Value" String="EFFORT_CHANGE"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="SENT_TO_TEST"/>
+              <PropertyValue Property="Value" String="SENT_TO_TEST"/>
+            </Record>
+          </Collection>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="PerformanceService.DocumentationObjects/ID">
+        <Annotation Term="Core.ComputedDefaultValue" Bool="true"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.DocumentationObjects/createdAt">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Immutable" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Common.Label" String="{i18n>CreatedAt}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.DocumentationObjects/createdBy">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Immutable" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Core.Description" String="{i18n>UserID.Description}"/>
+        <Annotation Term="Common.Label" String="{i18n>CreatedBy}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.DocumentationObjects/modifiedAt">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Common.Label" String="{i18n>ChangedAt}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.DocumentationObjects/modifiedBy">
+        <Annotation Term="UI.HiddenFilter" Bool="true"/>
+        <Annotation Term="UI.ExcludeFromNavigationContext" Bool="true"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Core.Description" String="{i18n>UserID.Description}"/>
+        <Annotation Term="Common.Label" String="{i18n>ChangedBy}"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.DocumentationObjects/wricefObject_ID">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.DocumentationObjects/projectId">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.DocumentationObjects/title">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.DocumentationObjects/type">
+        <Annotation Term="Validation.AllowedValues">
+          <Collection>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="SFD"/>
+              <PropertyValue Property="Value" String="SFD"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="GUIDE"/>
+              <PropertyValue Property="Value" String="GUIDE"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="ARCHITECTURE_DOC"/>
+              <PropertyValue Property="Value" String="ARCHITECTURE_DOC"/>
+            </Record>
+            <Record Type="Validation.AllowedValue">
+              <Annotation Term="Core.SymbolicName" String="GENERAL"/>
+              <PropertyValue Property="Value" String="GENERAL"/>
+            </Record>
+          </Collection>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="PerformanceService.DocumentationAttachments/ID">
+        <Annotation Term="Core.ComputedDefaultValue" Bool="true"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.DocumentationAttachments/filename">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.TicketComments/ID">
+        <Annotation Term="Core.ComputedDefaultValue" Bool="true"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.TicketComments/ticket_ID">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.TicketComments/userId">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.TicketComments/message">
+        <Annotation Term="Common.FieldControl" EnumMember="Common.FieldControlType/Mandatory"/>
+      </Annotations>
+      <Annotations Target="PerformanceService.TicketComments/timestamp">
+        <Annotation Term="Core.Computed" Bool="true"/>
+      </Annotations>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

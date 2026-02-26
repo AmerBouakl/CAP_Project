@@ -1,0 +1,40 @@
+{
+  "name": "sap-performance-backend",
+  "version": "1.0.0",
+  "description": "SAP CAP Backend – Tickets & WRICEF Object Organizer",
+  "repository": "<Add your repository here>",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@cap-js/hana": "^2.6.0",
+    "@sap/cds": "^9.7.1",
+    "@sap/xssec": "^4.12.2",
+    "express": "^4",
+    "passport": "^0.7.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@cap-js/sqlite": "^1",
+    "@sap/cds-dk": "^9.7.2"
+  },
+  "scripts": {
+    "start": "cds-serve",
+    "watch": "cds watch"
+  },
+  "cds": {
+    "requires": {
+      "db": {
+        "kind": "hana-cloud"
+      },
+      "auth": {
+        "kind": "xsuaa"
+      }
+    },
+    "hana": {
+      "deploy-format": "hdbtable"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
