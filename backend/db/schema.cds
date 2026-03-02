@@ -19,6 +19,35 @@ type DocObjectType      : String(20) enum { SFD; GUIDE; ARCHITECTURE_DOC; GENERA
 type WricefType         : String(1)  enum { W; R; I; C; E; F; };
 
 // ---------------------------------------------------------------------------
+// User Role enum
+// ---------------------------------------------------------------------------
+type UserRole : String(30) enum {
+  ADMIN;
+  MANAGER;
+  CONSULTANT_TECHNIQUE;
+  CONSULTANT_FONCTIONNEL;
+  PROJECT_MANAGER;
+  DEV_COORDINATOR;
+};
+
+// ---------------------------------------------------------------------------
+// Users – platform users with their role
+// ---------------------------------------------------------------------------
+entity Users : cuid, managed {
+  name                 : String(200)  @mandatory;
+  email                : String(200)  @mandatory;
+  role                 : UserRole     @mandatory;
+  active               : Boolean      default true;
+  skills               : String(2000);               // comma-separated
+  availabilityPercent  : Integer      default 100;
+  teamId               : String(100);
+  avatarUrl            : String(1000);
+  // Navigation back to tickets assigned to this user
+  techTickets          : Association to many Tickets on techTickets.techConsultant = $self;
+  funcTickets          : Association to many Tickets on funcTickets.functionalConsultant = $self;
+}
+
+// ---------------------------------------------------------------------------
 // WRICEF – the top-level grouping from the WRICEF spreadsheet
 // Each project has many WRICEFs; each WRICEF groups objects & docs.
 // ---------------------------------------------------------------------------
@@ -55,28 +84,40 @@ entity WricefItems : cuid, managed {
 // ---------------------------------------------------------------------------
 
 entity Tickets : cuid, managed {
-  ticketCode       : String(30);                 // Auto-generated TK-YYYY-NNNN
-  projectId        : String(100)  @mandatory;
-  wricefItem       : Association to WricefItems;
-  createdBy        : String(100)  @mandatory;
-  assignedTo       : String(100);
-  assignedToRole   : String(30);
-  status           : TicketStatus    default 'NEW';
-  priority         : Priority        default 'MEDIUM';
-  nature           : TicketNature    @mandatory;
-  title            : String(500)     @mandatory;
-  description      : String(5000);
-  dueDate          : Date;
-  effortHours      : Decimal(8,2)    default 0;
-  effortComment    : String(2000);
-  functionalTesterId : String(100);
-  tags             : String(1000);               // comma-separated
-  module           : SAPModule       default 'OTHER';
-  estimationHours  : Decimal(8,2)    default 0;
-  complexity       : TicketComplexity default 'MOYEN';
-  estimatedViaAbaque : Boolean       default false;
+  ticketCode            : String(30);                  // Auto-generated TK-YYYY-NNNN
+  projectId             : String(100)  @mandatory;
+  wricefItem            : Association to WricefItems;
+  createdBy             : String(100)  @mandatory;
+
+  // ------------ Consultant assignments (mandatory) -------------------------
+  // Technical consultant responsible for development/implementation
+  techConsultant        : Association to Users;        // role CONSULTANT_TECHNIQUE
+  techConsultantRole    : String(30)  default 'CONSULTANT_TECHNIQUE';
+
+  // Functional consultant responsible for testing/validation
+  functionalConsultant  : Association to Users;        // role CONSULTANT_FONCTIONNEL
+  functionalConsultantRole : String(30) default 'CONSULTANT_FONCTIONNEL';
+
+  // Legacy assignedTo fields (kept for backward compat)
+  assignedTo            : String(100);
+  assignedToRole        : String(30);
+
+  status                : TicketStatus    default 'NEW';
+  priority              : Priority        default 'MEDIUM';
+  nature                : TicketNature    @mandatory;
+  title                 : String(500)     @mandatory;
+  description           : String(5000);
+  dueDate               : Date;
+  effortHours           : Decimal(8,2)    default 0;
+  effortComment         : String(2000);
+  functionalTesterId    : String(100);
+  tags                  : String(1000);                // comma-separated
+  module                : SAPModule       default 'OTHER';
+  estimationHours       : Decimal(8,2)    default 0;
+  complexity            : TicketComplexity default 'MOYEN';
+  estimatedViaAbaque    : Boolean         default false;
   // Navigation
-  history          : Composition of many TicketEvents on history.ticket = $self;
+  history               : Composition of many TicketEvents on history.ticket = $self;
 }
 
 // ---------------------------------------------------------------------------

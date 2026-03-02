@@ -100,9 +100,9 @@ export interface ODataError {
 // Build OData query string from options
 function buildQueryString(options?: ODataQueryOptions): string {
   if (!options) return '';
-  
+
   const params = new URLSearchParams();
-  
+
   if (options.$filter) params.append('$filter', options.$filter);
   if (options.$select) params.append('$select', options.$select);
   if (options.$expand) params.append('$expand', options.$expand);
@@ -111,7 +111,7 @@ function buildQueryString(options?: ODataQueryOptions): string {
   if (options.$skip !== undefined) params.append('$skip', options.$skip.toString());
   if (options.$count) params.append('$count', 'true');
   if (options.$search) params.append('$search', options.$search);
-  
+
   const queryString = params.toString();
   return queryString ? `?${queryString}` : '';
 }
@@ -141,7 +141,7 @@ async function odataFetch<T>(endpoint: string, options?: RequestInit): Promise<T
       // Extract error message from OData error structure
       const errorMessage = errorData?.error?.message || response.statusText;
       const errorCode = errorData?.error?.code || response.status.toString();
-      
+
       throw new Error(`[${errorCode}] ${errorMessage}`);
     }
 
@@ -1370,8 +1370,11 @@ function mapTicketFromOData(raw: any): Ticket {
     projectId: raw.projectId,
     wricefItemId: raw.wricefItem_ID ?? raw.wricefItemId ?? '',
     createdBy: raw.createdBy,
-    assignedTo: raw.assignedTo || undefined,
+    assignedTo: (raw.techConsultant_ID ?? raw.assignedTo) || undefined,
     assignedToRole: raw.assignedToRole || undefined,
+    // New: explicit consultant FK fields
+    techConsultantId: (raw.techConsultant_ID as string) || undefined,
+    functionalConsultantId: (raw.functionalConsultant_ID as string) || undefined,
     status: raw.status ?? 'NEW',
     priority: raw.priority ?? 'MEDIUM',
     nature: raw.nature,
@@ -1405,6 +1408,10 @@ function mapTicketToOData(ticket: Partial<Ticket>): Record<string, unknown> {
   if (ticket.projectId !== undefined) payload.projectId = ticket.projectId;
   if (ticket.wricefItemId !== undefined && ticket.wricefItemId) payload.wricefItem_ID = ticket.wricefItemId;
   if (ticket.createdBy !== undefined) payload.createdBy = ticket.createdBy;
+  // New: explicit consultant FK fields (CAP uses _ID suffix for associations)
+  if ((ticket as any).techConsultantId !== undefined) payload.techConsultant_ID = (ticket as any).techConsultantId || null;
+  if ((ticket as any).functionalConsultantId !== undefined) payload.functionalConsultant_ID = (ticket as any).functionalConsultantId || null;
+  // Legacy assignedTo (keep in sync for backward compat)
   if (ticket.assignedTo !== undefined) payload.assignedTo = ticket.assignedTo;
   if (ticket.assignedToRole !== undefined) payload.assignedToRole = ticket.assignedToRole;
   if (ticket.status !== undefined) payload.status = ticket.status;
@@ -1423,6 +1430,53 @@ function mapTicketToOData(ticket: Partial<Ticket>): Record<string, unknown> {
   if (ticket.estimatedViaAbaque !== undefined) payload.estimatedViaAbaque = ticket.estimatedViaAbaque;
   return payload;
 }
+
+// ---------------------------------------------------------------------------
+// Backend Users API – always calls real CAP backend (Users entity)
+// ---------------------------------------------------------------------------
+export const BackendUsersAPI = {
+  async getAll(): Promise<User[]> {
+    const response = await capFetch<ODataResponse<Record<string, unknown>>>('/Users');
+    return (response.value || []).map((u) => ({
+      id: String(u.ID ?? u.id ?? ''),
+      name: String(u.name ?? ''),
+      email: String(u.email ?? ''),
+      role: (u.role as User['role']) ?? 'CONSULTANT_TECHNIQUE',
+      active: Boolean(u.active ?? true),
+      skills: u.skills ? String(u.skills).split(',').map((s) => s.trim()).filter(Boolean) : [],
+      certifications: [],
+      availabilityPercent: Number(u.availabilityPercent ?? 100),
+      teamId: u.teamId ? String(u.teamId) : undefined,
+      avatarUrl: u.avatarUrl ? String(u.avatarUrl) : undefined,
+    }));
+  },
+
+  async getByRole(role: User['role']): Promise<User[]> {
+    const response = await capFetch<ODataResponse<Record<string, unknown>>>(
+      `/Users?$filter=role eq '${role}' and active eq true&$orderby=name`
+    );
+    return (response.value || []).map((u) => ({
+      id: String(u.ID ?? u.id ?? ''),
+      name: String(u.name ?? ''),
+      email: String(u.email ?? ''),
+      role: (u.role as User['role']) ?? 'CONSULTANT_TECHNIQUE',
+      active: Boolean(u.active ?? true),
+      skills: u.skills ? String(u.skills).split(',').map((s) => s.trim()).filter(Boolean) : [],
+      certifications: [],
+      availabilityPercent: Number(u.availabilityPercent ?? 100),
+      teamId: u.teamId ? String(u.teamId) : undefined,
+      avatarUrl: u.avatarUrl ? String(u.avatarUrl) : undefined,
+    }));
+  },
+
+  async getTechConsultants(): Promise<User[]> {
+    return BackendUsersAPI.getByRole('CONSULTANT_TECHNIQUE');
+  },
+
+  async getFunctionalConsultants(): Promise<User[]> {
+    return BackendUsersAPI.getByRole('CONSULTANT_FONCTIONNEL');
+  },
+};
 
 function mapWricefItemFromOData(raw: any): WricefItem {
   return {

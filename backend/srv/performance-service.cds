@@ -5,6 +5,9 @@ using { sap.performance as db } from '../db/schema';
 
 service PerformanceService @(path: '/odata/v4/performance') {
 
+  // --- Users (with roles) ---
+  entity Users as projection on db.Users;
+
   // --- WRICEF Objects (top-level WRICEF entries) ---
   entity WricefObjects as projection on db.WricefObjects;
 

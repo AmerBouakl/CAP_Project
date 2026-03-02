@@ -24,11 +24,14 @@
   "cds": {
     "requires": {
       "db": {
-        "kind": "sqlite",
-        "credentials": {
-          "database": "db.sqlite"
-        }
+        "kind": "hana-cloud"
+      },
+      "auth": {
+        "kind": "xsuaa"
       }
+    },
+    "hana": {
+      "deploy-format": "hdbtable"
     }
   }
 }

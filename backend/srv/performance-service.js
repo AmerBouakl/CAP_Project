@@ -7,18 +7,45 @@ const XLSX = require('xlsx');
 module.exports = class PerformanceService extends cds.ApplicationService {
 
   async init() {
-    const { Tickets, WricefObjects, WricefItems, TicketEvents, DocumentationObjects } = this.entities;
+    const { Tickets, WricefObjects, WricefItems, TicketEvents, DocumentationObjects, Users } = this.entities;
 
     // -----------------------------------------------------------------------
-    // Auto-generate ticketCode on Ticket creation
+    // BEFORE CREATE Tickets – auto-generate ticketCode + validate consultant roles
     // -----------------------------------------------------------------------
     this.before('CREATE', 'Tickets', async (req) => {
       const year = new Date().getFullYear();
       const code = await this._nextTicketCode(year);
       req.data.ticketCode = code;
 
-      // Default timestamps
+      // Default status
       if (!req.data.status) req.data.status = 'NEW';
+
+      // Validate techConsultant has role CONSULTANT_TECHNIQUE
+      if (req.data.techConsultant_ID) {
+        const tech = await SELECT.one.from(Users).where({ ID: req.data.techConsultant_ID });
+        if (!tech) {
+          return req.reject(400, `Technical consultant with ID '${req.data.techConsultant_ID}' not found.`);
+        }
+        if (tech.role !== 'CONSULTANT_TECHNIQUE') {
+          return req.reject(400, `User '${tech.name}' (${tech.role}) cannot be assigned as Technical Consultant. Expected role: CONSULTANT_TECHNIQUE.`);
+        }
+        // Keep denormalized assignedTo in sync
+        req.data.assignedTo = tech.ID;
+        req.data.assignedToRole = 'CONSULTANT_TECHNIQUE';
+        req.data.techConsultantRole = 'CONSULTANT_TECHNIQUE';
+      }
+
+      // Validate functionalConsultant has role CONSULTANT_FONCTIONNEL
+      if (req.data.functionalConsultant_ID) {
+        const func = await SELECT.one.from(Users).where({ ID: req.data.functionalConsultant_ID });
+        if (!func) {
+          return req.reject(400, `Functional consultant with ID '${req.data.functionalConsultant_ID}' not found.`);
+        }
+        if (func.role !== 'CONSULTANT_FONCTIONNEL') {
+          return req.reject(400, `User '${func.name}' (${func.role}) cannot be assigned as Functional Consultant. Expected role: CONSULTANT_FONCTIONNEL.`);
+        }
+        req.data.functionalConsultantRole = 'CONSULTANT_FONCTIONNEL';
+      }
 
       // Create initial history event
       if (!req.data.history) {
@@ -33,7 +60,7 @@ module.exports = class PerformanceService extends cds.ApplicationService {
     });
 
     // -----------------------------------------------------------------------
-    // On Ticket update – push history events for status / assignment changes
+    // BEFORE UPDATE Tickets – validate consultant roles + push history events
     // -----------------------------------------------------------------------
     this.before('UPDATE', 'Tickets', async (req) => {
       if (!req.data.ID) return;
@@ -41,9 +68,36 @@ module.exports = class PerformanceService extends cds.ApplicationService {
       const existing = await SELECT.one.from(Tickets).where({ ID: req.data.ID });
       if (!existing) return;
 
+      // Validate techConsultant role when being changed
+      if (req.data.techConsultant_ID && req.data.techConsultant_ID !== existing.techConsultant_ID) {
+        const tech = await SELECT.one.from(Users).where({ ID: req.data.techConsultant_ID });
+        if (!tech) {
+          return req.reject(400, `Technical consultant with ID '${req.data.techConsultant_ID}' not found.`);
+        }
+        if (tech.role !== 'CONSULTANT_TECHNIQUE') {
+          return req.reject(400, `User '${tech.name}' (${tech.role}) cannot be assigned as Technical Consultant. Expected role: CONSULTANT_TECHNIQUE.`);
+        }
+        req.data.assignedTo = tech.ID;
+        req.data.assignedToRole = 'CONSULTANT_TECHNIQUE';
+        req.data.techConsultantRole = 'CONSULTANT_TECHNIQUE';
+      }
+
+      // Validate functionalConsultant role when being changed
+      if (req.data.functionalConsultant_ID && req.data.functionalConsultant_ID !== existing.functionalConsultant_ID) {
+        const func = await SELECT.one.from(Users).where({ ID: req.data.functionalConsultant_ID });
+        if (!func) {
+          return req.reject(400, `Functional consultant with ID '${req.data.functionalConsultant_ID}' not found.`);
+        }
+        if (func.role !== 'CONSULTANT_FONCTIONNEL') {
+          return req.reject(400, `User '${func.name}' (${func.role}) cannot be assigned as Functional Consultant. Expected role: CONSULTANT_FONCTIONNEL.`);
+        }
+        req.data.functionalConsultantRole = 'CONSULTANT_FONCTIONNEL';
+      }
+
+      // Emit history events for auditable changes
       const events = [];
       const now = new Date().toISOString();
-      const userId = req.data.assignedTo || existing.assignedTo || 'system';
+      const userId = req.data.techConsultant_ID || existing.techConsultant_ID || req.data.assignedTo || existing.assignedTo || 'system';
 
       if (req.data.status && req.data.status !== existing.status) {
         events.push({
@@ -56,7 +110,30 @@ module.exports = class PerformanceService extends cds.ApplicationService {
         });
       }
 
-      if (req.data.assignedTo && req.data.assignedTo !== existing.assignedTo) {
+      if (req.data.techConsultant_ID && req.data.techConsultant_ID !== existing.techConsultant_ID) {
+        events.push({
+          ticket_ID: req.data.ID,
+          timestamp: now,
+          userId,
+          action: 'ASSIGNED',
+          toValue: req.data.techConsultant_ID,
+          comment: 'Technical consultant assigned',
+        });
+      }
+
+      if (req.data.functionalConsultant_ID && req.data.functionalConsultant_ID !== existing.functionalConsultant_ID) {
+        events.push({
+          ticket_ID: req.data.ID,
+          timestamp: now,
+          userId,
+          action: 'ASSIGNED',
+          toValue: req.data.functionalConsultant_ID,
+          comment: 'Functional consultant assigned',
+        });
+      }
+
+      // Keep legacy assignedTo in sync too
+      if (req.data.assignedTo && req.data.assignedTo !== existing.assignedTo && !req.data.techConsultant_ID) {
         events.push({
           ticket_ID: req.data.ID,
           timestamp: now,
@@ -112,7 +189,6 @@ module.exports = class PerformanceService extends cds.ApplicationService {
         const sheet = workbook.Sheets[sheetName];
 
         // Auto-detect where the header row is.
-        // The Excel may have 1-2 decoration rows before the real column headers.
         const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
         let headerRowIndex = 0;
         const headerKeywords = ['id', 'ID', 'Id', 'wricefId', 'WRICEF', 'wricef'];
@@ -274,7 +350,6 @@ module.exports = class PerformanceService extends cds.ApplicationService {
     const db = await cds.connect.to('db');
     const { TicketCounters } = db.entities('sap.performance');
 
-    // Use a transaction to ensure atomicity
     let counter = await SELECT.one.from(TicketCounters).where({ year });
 
     if (!counter) {

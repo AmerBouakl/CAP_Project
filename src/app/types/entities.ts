@@ -445,6 +445,10 @@ export interface Ticket {
   assignedTo?: string;
   /** Role of the assigned person at assignment time (historical accuracy) */
   assignedToRole?: UserRole;
+  /** ID of the assigned technical consultant (FK to backend Users entity) */
+  techConsultantId?: string;
+  /** ID of the assigned functional consultant (FK to backend Users entity) */
+  functionalConsultantId?: string;
   status: TicketStatus;
   priority: Priority;
   /** Required nature/category of the ticket */

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { PageHeader } from '../../components/common/PageHeader';
 import { AbaqueEstimatorCard } from '../../components/business/AbaqueEstimatorCard';
@@ -12,6 +12,7 @@ import {
   UsersAPI,
   WricefObjectsAPI,
   WricefItemsAPI,
+  BackendUsersAPI,
 } from '../../services/odataClient';
 import {
   ABAQUE_TASK_NATURE_LABELS,
@@ -65,6 +66,7 @@ import {
   Loader2,
   Trash2,
   Plus,
+  Eye,
 } from 'lucide-react';
 
 import {
@@ -90,9 +92,14 @@ interface ProjectTicketForm {
   priority: Ticket['priority'];
   complexity: AbaqueComplexity;
   effortHours: number;
+  estimationHours: number;
   dueDate: string;
   wricefId: string;
   wricefItemId: string;
+  /** ID of the technical consultant to assign */
+  techConsultantId: string;
+  /** ID of the functional consultant to assign */
+  functionalConsultantId: string;
 }
 
 const EMPTY_TICKET_FORM: ProjectTicketForm = {
@@ -101,10 +108,13 @@ const EMPTY_TICKET_FORM: ProjectTicketForm = {
   nature: 'PROGRAMME',
   priority: 'MEDIUM',
   complexity: 'MEDIUM',
-  effortHours: 0,
+  effortHours: 8,
+  estimationHours: 8,
   dueDate: '',
   wricefId: '',
   wricefItemId: '',
+  techConsultantId: '',
+  functionalConsultantId: '',
 };
 
 const TICKET_COMPLEXITY_BY_ABAQUE: Record<AbaqueComplexity, Ticket['complexity']> = {
@@ -175,10 +185,35 @@ export const ProjectDetails: React.FC = () => {
   const [addingItemForWricef, setAddingItemForWricef] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({ objectId: '', title: '', description: '' });
   const [savingItem, setSavingItem] = useState(false);
-  // Inline ticket creation from within expanded WRICEF row
+  // Inline ticket creation from within expanded WRICEF row – now opens full modal
   const [showInlineTicketForWricef, setShowInlineTicketForWricef] = useState<string | null>(null);
-  const [inlineTicketForm, setInlineTicketForm] = useState({ title: '', nature: 'PROGRAMME' as TicketNature, complexity: 'MOYEN' as Ticket['complexity'], priority: 'MEDIUM' as Ticket['priority'] });
+  const [inlineTicketForm, setInlineTicketForm] = useState({
+    title: '',
+    nature: 'PROGRAMME' as TicketNature,
+    complexity: 'MOYEN' as Ticket['complexity'],
+    priority: 'MEDIUM' as Ticket['priority'],
+    description: '',
+    effortHours: 0,
+    estimationHours: 0,
+    dueDate: '',
+    techConsultantId: '',
+    functionalConsultantId: '',
+  });
   const [creatingInlineTicket, setCreatingInlineTicket] = useState(false);
+  // Consultant lists fetched from the backend
+  const [techConsultants, setTechConsultants] = useState<User[]>([]);
+  const [funcConsultants, setFuncConsultants] = useState<User[]>([]);
+  // "Create New Object" mini-dialog (triggered from ticket creation form)
+  const [showCreateObjectInTicket, setShowCreateObjectInTicket] = useState(false);
+  const [newObjectInTicketForm, setNewObjectInTicketForm] = useState({
+    wricefId: '',
+    title: '',
+    description: '',
+    complexity: 'MOYEN',
+    type: '' as string,
+    module: 'OTHER',
+  });
+  const [creatingObjectInTicket, setCreatingObjectInTicket] = useState(false);
 
   const roleBasePath = currentUser?.role === 'PROJECT_MANAGER' ? '/project-manager' : '/manager';
 
@@ -190,7 +225,7 @@ export const ProjectDetails: React.FC = () => {
   const loadProjectData = async (projectId: string) => {
     setLoading(true);
     try {
-      const [p, taskData, allocationData, userData, deliverableData, ticketData, abaqueData, wricefData] =
+      const [p, taskData, allocationData, userData, deliverableData, ticketData, abaqueData, wricefData, techList, funcList] =
         await Promise.all([
           ProjectsAPI.getById(projectId),
           TasksAPI.getByProject(projectId),
@@ -200,6 +235,8 @@ export const ProjectDetails: React.FC = () => {
           TicketsAPI.getAll(),
           AbaquesAPI.getAll(),
           WricefObjectsAPI.getByProject(projectId),
+          BackendUsersAPI.getTechConsultants().catch(() => [] as User[]),
+          BackendUsersAPI.getFunctionalConsultants().catch(() => [] as User[]),
         ]);
 
       if (!p) {
@@ -217,6 +254,8 @@ export const ProjectDetails: React.FC = () => {
       setTickets(ticketData.filter((t) => t.projectId === projectId));
       setAbaques(abaqueData);
       setWricefObjects(wricefData);
+      setTechConsultants(techList);
+      setFuncConsultants(funcList);
       setForceEstimatorVisible(false);
     } finally {
       setLoading(false);
@@ -395,18 +434,20 @@ export const ProjectDetails: React.FC = () => {
       const created = await TicketsAPI.create({
         projectId: project.id,
         createdBy: currentUser.id,
-        assignedTo: undefined,
-        assignedToRole: undefined,
+        assignedTo: ticketForm.techConsultantId || undefined,
+        assignedToRole: ticketForm.techConsultantId ? 'CONSULTANT_TECHNIQUE' : undefined,
+        techConsultantId: ticketForm.techConsultantId || undefined,
+        functionalConsultantId: ticketForm.functionalConsultantId || undefined,
         priority: ticketForm.priority,
         nature: ticketForm.nature,
         status: 'NEW',
         title: ticketForm.title.trim(),
         description: ticketForm.description.trim(),
         dueDate: ticketForm.dueDate || undefined,
-        effortHours: 0,
+        effortHours: ticketForm.effortHours,
         wricefItemId: ticketForm.wricefItemId || '',
         module: 'OTHER',
-        estimationHours: ticketForm.effortHours,
+        estimationHours: ticketForm.estimationHours,
         complexity: TICKET_COMPLEXITY_BY_ABAQUE[ticketForm.complexity],
         estimatedViaAbaque: isEstimatedByAbaque,
         history: [
@@ -510,11 +551,10 @@ export const ProjectDetails: React.FC = () => {
                   tabIndex={isActive ? 0 : -1}
                   onKeyDown={(event) => handleTabKeyDown(event, tab.key)}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`rounded border px-4 py-2 text-sm whitespace-nowrap ${
-                    isActive
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-card text-foreground hover:bg-accent'
-                  }`}
+                  className={`rounded border px-4 py-2 text-sm whitespace-nowrap ${isActive
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-card text-foreground hover:bg-accent'
+                    }`}
                 >
                   {tab.label}
                 </button>
@@ -525,81 +565,81 @@ export const ProjectDetails: React.FC = () => {
 
         {activeTab === 'overview' && (
           <>
-          <section
-            id="project-panel-overview"
-            role="tabpanel"
-            tabIndex={0}
-            aria-labelledby="project-tab-overview"
-            className="grid grid-cols-1 gap-6 lg:grid-cols-3"
-          >
-            <div className="lg:col-span-2 bg-card border border-border rounded-lg p-5 space-y-4">
-              <h3 className="text-lg font-semibold text-foreground">Project Snapshot</h3>
-              <p className="text-sm text-muted-foreground">{project.description}</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="p-3 rounded border border-border">
-                  <div className="text-xs text-muted-foreground">Manager</div>
-                  <div className="font-medium text-foreground">{manager?.name ?? 'Unknown'}</div>
-                </div>
-                <div className="p-3 rounded border border-border">
-                  <div className="text-xs text-muted-foreground">Budget</div>
-                  <div className="font-medium text-foreground">
-                    ${project.budget?.toLocaleString() ?? 'N/A'}
+            <section
+              id="project-panel-overview"
+              role="tabpanel"
+              tabIndex={0}
+              aria-labelledby="project-tab-overview"
+              className="grid grid-cols-1 gap-6 lg:grid-cols-3"
+            >
+              <div className="lg:col-span-2 bg-card border border-border rounded-lg p-5 space-y-4">
+                <h3 className="text-lg font-semibold text-foreground">Project Snapshot</h3>
+                <p className="text-sm text-muted-foreground">{project.description}</p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="p-3 rounded border border-border">
+                    <div className="text-xs text-muted-foreground">Manager</div>
+                    <div className="font-medium text-foreground">{manager?.name ?? 'Unknown'}</div>
+                  </div>
+                  <div className="p-3 rounded border border-border">
+                    <div className="text-xs text-muted-foreground">Budget</div>
+                    <div className="font-medium text-foreground">
+                      ${project.budget?.toLocaleString() ?? 'N/A'}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded border border-border">
+                    <div className="text-xs text-muted-foreground">Start Date</div>
+                    <div className="font-medium text-foreground">
+                      {new Date(project.startDate).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded border border-border">
+                    <div className="text-xs text-muted-foreground">End Date</div>
+                    <div className="font-medium text-foreground">
+                      {new Date(project.endDate).toLocaleDateString()}
+                    </div>
                   </div>
                 </div>
-                <div className="p-3 rounded border border-border">
-                  <div className="text-xs text-muted-foreground">Start Date</div>
-                  <div className="font-medium text-foreground">
-                    {new Date(project.startDate).toLocaleDateString()}
+
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-muted-foreground">Global Progress</span>
+                    <span className="font-medium text-foreground">{project.progress ?? 0}%</span>
                   </div>
-                </div>
-                <div className="p-3 rounded border border-border">
-                  <div className="text-xs text-muted-foreground">End Date</div>
-                  <div className="font-medium text-foreground">
-                    {new Date(project.endDate).toLocaleDateString()}
+                  <div className="w-full bg-muted rounded-full h-2">
+                    <div
+                      className="h-2 bg-primary rounded-full"
+                      style={{ width: `${project.progress ?? 0}%` }}
+                    />
                   </div>
                 </div>
               </div>
 
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-muted-foreground">Global Progress</span>
-                  <span className="font-medium text-foreground">{project.progress ?? 0}%</span>
+              <div className="bg-card border border-border rounded-lg p-5 space-y-3">
+                <h3 className="text-lg font-semibold text-foreground">Live Metrics</h3>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Tasks</span>
+                  <span className="font-medium text-foreground">{tasks.length}</span>
                 </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div
-                    className="h-2 bg-primary rounded-full"
-                    style={{ width: `${project.progress ?? 0}%` }}
-                  />
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Deliverables</span>
+                  <span className="font-medium text-foreground">{deliverables.length}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Open Tickets</span>
+                  <span className="font-medium text-foreground">
+                    {tickets.filter((ticket) => ticket.status !== 'DONE' && ticket.status !== 'REJECTED').length}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Critical Tasks</span>
+                  <span className="font-medium text-destructive">{kpis.critical}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Blocked</span>
+                  <span className="font-medium text-accent-foreground">{kpis.blocked}</span>
                 </div>
               </div>
-            </div>
-
-            <div className="bg-card border border-border rounded-lg p-5 space-y-3">
-              <h3 className="text-lg font-semibold text-foreground">Live Metrics</h3>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Tasks</span>
-                <span className="font-medium text-foreground">{tasks.length}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Deliverables</span>
-                <span className="font-medium text-foreground">{deliverables.length}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Open Tickets</span>
-                <span className="font-medium text-foreground">
-                  {tickets.filter((ticket) => ticket.status !== 'DONE' && ticket.status !== 'REJECTED').length}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Critical Tasks</span>
-                <span className="font-medium text-destructive">{kpis.critical}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Blocked</span>
-                <span className="font-medium text-accent-foreground">{kpis.blocked}</span>
-              </div>
-            </div>
-          </section>
+            </section>
           </>
         )}
 
@@ -614,104 +654,104 @@ export const ProjectDetails: React.FC = () => {
             {/* Abaque Configuration */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               <div className="rounded-lg border bg-card p-5 space-y-4 lg:col-span-2">
-              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Scale className="h-5 w-5 text-primary" />
+                    <h3 className="text-lg font-semibold text-foreground">Configuration</h3>
+                  </div>
+                  <Badge variant="outline">Abaques de Chiffrage</Badge>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="project-abaque-select">Linked Abaque</Label>
+                  <Select
+                    value={project.linkedAbaqueId ?? '__none'}
+                    onValueChange={(value) => void updateProjectAbaque(value)}
+                    disabled={abaqueSaving}
+                  >
+                    <SelectTrigger id="project-abaque-select" className="max-w-lg">
+                      <SelectValue placeholder="Select an estimation abaque" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">No linked abaque</SelectItem>
+                      {abaques.map((abaque) => (
+                        <SelectItem key={abaque.id} value={abaque.id}>
+                          {abaque.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    This matrix will be used as the default standard for ticket estimation in this project.
+                  </p>
+                </div>
+
+                {!selectedAbaque ? (
+                  <p className="text-sm text-muted-foreground">No abaque selected for this project.</p>
+                ) : (
+                  <div className="rounded-lg border border-border/70 bg-surface-2 overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-muted/55">
+                        <TableRow>
+                          <TableHead className="px-4">Task Nature</TableHead>
+                          <TableHead className="px-4">Low</TableHead>
+                          <TableHead className="px-4">Medium</TableHead>
+                          <TableHead className="px-4">High</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {abaqueTaskNatures.map((taskNature) => {
+                          const low = selectedAbaque.entries.find(
+                            (entry) =>
+                              entry.taskNature === taskNature && entry.complexity === 'LOW'
+                          )?.standardHours;
+                          const medium = selectedAbaque.entries.find(
+                            (entry) =>
+                              entry.taskNature === taskNature && entry.complexity === 'MEDIUM'
+                          )?.standardHours;
+                          const high = selectedAbaque.entries.find(
+                            (entry) =>
+                              entry.taskNature === taskNature && entry.complexity === 'HIGH'
+                          )?.standardHours;
+                          return (
+                            <TableRow key={taskNature}>
+                              <TableCell className="px-4 py-3">
+                                <Badge variant="secondary">
+                                  {ABAQUE_TASK_NATURE_LABELS[taskNature]}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="px-4 py-3 text-sm font-semibold">{low ?? '-'}</TableCell>
+                              <TableCell className="px-4 py-3 text-sm font-semibold">{medium ?? '-'}</TableCell>
+                              <TableCell className="px-4 py-3 text-sm font-semibold">{high ?? '-'}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-lg border bg-card p-5 space-y-4">
                 <div className="flex items-center gap-2">
-                  <Scale className="h-5 w-5 text-primary" />
-                  <h3 className="text-lg font-semibold text-foreground">Configuration</h3>
+                  <Calculator className="h-5 w-5 text-primary" />
+                  <h3 className="text-lg font-semibold text-foreground">Smart Ticket Estimation</h3>
                 </div>
-                <Badge variant="outline">Abaques de Chiffrage</Badge>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="project-abaque-select">Linked Abaque</Label>
-                <Select
-                  value={project.linkedAbaqueId ?? '__none'}
-                  onValueChange={(value) => void updateProjectAbaque(value)}
-                  disabled={abaqueSaving}
-                >
-                  <SelectTrigger id="project-abaque-select" className="max-w-lg">
-                    <SelectValue placeholder="Select an estimation abaque" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">No linked abaque</SelectItem>
-                    {abaques.map((abaque) => (
-                      <SelectItem key={abaque.id} value={abaque.id}>
-                        {abaque.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  This matrix will be used as the default standard for ticket estimation in this project.
+                <p className="text-sm text-muted-foreground">
+                  Create project tickets with standardized effort using the linked abaque matrix.
                 </p>
-              </div>
-
-              {!selectedAbaque ? (
-                <p className="text-sm text-muted-foreground">No abaque selected for this project.</p>
-              ) : (
-                <div className="rounded-lg border border-border/70 bg-surface-2 overflow-hidden">
-                  <Table>
-                    <TableHeader className="bg-muted/55">
-                      <TableRow>
-                        <TableHead className="px-4">Task Nature</TableHead>
-                        <TableHead className="px-4">Low</TableHead>
-                        <TableHead className="px-4">Medium</TableHead>
-                        <TableHead className="px-4">High</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {abaqueTaskNatures.map((taskNature) => {
-                        const low = selectedAbaque.entries.find(
-                          (entry) =>
-                            entry.taskNature === taskNature && entry.complexity === 'LOW'
-                        )?.standardHours;
-                        const medium = selectedAbaque.entries.find(
-                          (entry) =>
-                            entry.taskNature === taskNature && entry.complexity === 'MEDIUM'
-                        )?.standardHours;
-                        const high = selectedAbaque.entries.find(
-                          (entry) =>
-                            entry.taskNature === taskNature && entry.complexity === 'HIGH'
-                        )?.standardHours;
-                        return (
-                          <TableRow key={taskNature}>
-                            <TableCell className="px-4 py-3">
-                              <Badge variant="secondary">
-                                {ABAQUE_TASK_NATURE_LABELS[taskNature]}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="px-4 py-3 text-sm font-semibold">{low ?? '-'}</TableCell>
-                            <TableCell className="px-4 py-3 text-sm font-semibold">{medium ?? '-'}</TableCell>
-                            <TableCell className="px-4 py-3 text-sm font-semibold">{high ?? '-'}</TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                <div className="rounded border border-border p-3 text-sm space-y-1">
+                  <div className="text-muted-foreground">Current Abaque</div>
+                  <div className="font-medium text-foreground">
+                    {selectedAbaque?.name ?? 'No linked abaque'}
+                  </div>
                 </div>
-              )}
-            </div>
-
-            <div className="rounded-lg border bg-card p-5 space-y-4">
-              <div className="flex items-center gap-2">
-                <Calculator className="h-5 w-5 text-primary" />
-                <h3 className="text-lg font-semibold text-foreground">Smart Ticket Estimation</h3>
+                <Button onClick={() => setShowCreateTicket(true)} className="w-full">
+                  <Calculator className="h-4 w-4 mr-1" />
+                  Create Ticket
+                </Button>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Create project tickets with standardized effort using the linked abaque matrix.
-              </p>
-              <div className="rounded border border-border p-3 text-sm space-y-1">
-                <div className="text-muted-foreground">Current Abaque</div>
-                <div className="font-medium text-foreground">
-                  {selectedAbaque?.name ?? 'No linked abaque'}
-                </div>
-              </div>
-              <Button onClick={() => setShowCreateTicket(true)} className="w-full">
-                <Calculator className="h-4 w-4 mr-1" />
-                Create Ticket
-              </Button>
             </div>
-          </div>
 
             {/* Abaque Estimator */}
             {!hasAbaqueEstimate || forceEstimatorVisible ? (
@@ -790,9 +830,8 @@ export const ProjectDetails: React.FC = () => {
                       />
                     </div>
                     <p
-                      className={`text-sm font-medium ${
-                        estimateDeltaDays < 0 ? 'text-destructive' : 'text-emerald-600'
-                      }`}
+                      className={`text-sm font-medium ${estimateDeltaDays < 0 ? 'text-destructive' : 'text-emerald-600'
+                        }`}
                     >
                       {estimateDeltaDays >= 0 ? '+' : ''}
                       {estimateDeltaDays.toFixed(1)} days vs baseline remaining
@@ -917,7 +956,7 @@ export const ProjectDetails: React.FC = () => {
                             <SelectValue placeholder="Type" />
                           </SelectTrigger>
                           <SelectContent>
-                            {(['W','R','I','C','E','F'] as WricefType[]).map((t) => (
+                            {(['W', 'R', 'I', 'C', 'E', 'F'] as WricefType[]).map((t) => (
                               <SelectItem key={t} value={t}>{t} – {WRICEF_TYPE_LABELS[t]}</SelectItem>
                             ))}
                           </SelectContent>
@@ -1141,7 +1180,7 @@ export const ProjectDetails: React.FC = () => {
                                                 onClick={(e) => {
                                                   e.stopPropagation();
                                                   setShowInlineTicketForWricef(wo.id);
-                                                  setInlineTicketForm({ title: '', nature: 'PROGRAMME', complexity: 'MOYEN', priority: 'MEDIUM' });
+                                                  setInlineTicketForm({ title: '', nature: 'PROGRAMME', complexity: 'MOYEN', priority: 'MEDIUM', description: '', effortHours: 0, estimationHours: 0, dueDate: '', techConsultantId: '', functionalConsultantId: '' });
                                                 }}
                                               >
                                                 <Plus className="h-3 w-3 mr-1" />
@@ -1149,133 +1188,7 @@ export const ProjectDetails: React.FC = () => {
                                               </Button>
                                             </div>
 
-                                            {/* Inline ticket creation form */}
-                                            {showInlineTicketForWricef === wo.id && (
-                                              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 mb-3 space-y-2">
-                                                <Input
-                                                  value={inlineTicketForm.title}
-                                                  onChange={(e) => setInlineTicketForm((prev) => ({ ...prev, title: e.target.value }))}
-                                                  placeholder="Ticket title"
-                                                  className="h-8 text-xs"
-                                                  onClick={(e) => e.stopPropagation()}
-                                                />
-                                                <div className="flex gap-2 flex-wrap">
-                                                  <Select
-                                                    value={inlineTicketForm.nature}
-                                                    onValueChange={(val) => setInlineTicketForm((prev) => ({ ...prev, nature: val as TicketNature }))}
-                                                  >
-                                                    <SelectTrigger className="h-8 text-xs w-[130px]" onClick={(e) => e.stopPropagation()}>
-                                                      <SelectValue placeholder="Nature" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                      {(Object.entries(TICKET_NATURE_LABELS) as [TicketNature, string][]).map(([k, v]) => (
-                                                        <SelectItem key={k} value={k}>{v}</SelectItem>
-                                                      ))}
-                                                    </SelectContent>
-                                                  </Select>
-                                                  <Select
-                                                    value={inlineTicketForm.complexity}
-                                                    onValueChange={(val) => setInlineTicketForm((prev) => ({ ...prev, complexity: val as Ticket['complexity'] }))}
-                                                  >
-                                                    <SelectTrigger className="h-8 text-xs w-[120px]" onClick={(e) => e.stopPropagation()}>
-                                                      <SelectValue placeholder="Complexity" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                      <SelectItem value="SIMPLE">Simple</SelectItem>
-                                                      <SelectItem value="MOYEN">Moyen</SelectItem>
-                                                      <SelectItem value="COMPLEXE">Complexe</SelectItem>
-                                                      <SelectItem value="TRES_COMPLEXE">Très Complexe</SelectItem>
-                                                    </SelectContent>
-                                                  </Select>
-                                                  <Select
-                                                    value={inlineTicketForm.priority}
-                                                    onValueChange={(val) => setInlineTicketForm((prev) => ({ ...prev, priority: val as Ticket['priority'] }))}
-                                                  >
-                                                    <SelectTrigger className="h-8 text-xs w-[100px]" onClick={(e) => e.stopPropagation()}>
-                                                      <SelectValue placeholder="Priority" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                      <SelectItem value="LOW">Low</SelectItem>
-                                                      <SelectItem value="MEDIUM">Medium</SelectItem>
-                                                      <SelectItem value="HIGH">High</SelectItem>
-                                                      <SelectItem value="CRITICAL">Critical</SelectItem>
-                                                    </SelectContent>
-                                                  </Select>
-                                                </div>
-                                                <div className="flex gap-2 justify-end">
-                                                  <Button
-                                                    size="sm"
-                                                    className="h-7 text-xs"
-                                                    disabled={creatingInlineTicket || !inlineTicketForm.title.trim()}
-                                                    onClick={async (e) => {
-                                                      e.stopPropagation();
-                                                      if (!project || !currentUser) return;
-                                                      setCreatingInlineTicket(true);
-                                                      try {
-                                                        // Ensure there's at least one WricefItem to link the ticket to
-                                                        let targetItem = wo.items?.[0];
-                                                        if (!targetItem) {
-                                                          targetItem = await WricefItemsAPI.create({
-                                                            wricefId: wo.id,
-                                                            objectId: wo.wricefId + '-OBJ-001',
-                                                            title: wo.title,
-                                                            description: '',
-                                                          });
-                                                          // Update the wricefObjects state to include the new item
-                                                          setWricefObjects((prev) => prev.map((o) =>
-                                                            o.id === wo.id ? { ...o, items: [{ ...targetItem!, tickets: [] }] } : o
-                                                          ));
-                                                        }
-                                                        const created = await TicketsAPI.create({
-                                                          projectId: project.id,
-                                                          createdBy: currentUser.id,
-                                                          status: 'NEW',
-                                                          priority: inlineTicketForm.priority,
-                                                          nature: inlineTicketForm.nature,
-                                                          title: inlineTicketForm.title.trim(),
-                                                          description: '',
-                                                          wricefItemId: targetItem!.id,
-                                                          module: wo.module || 'OTHER',
-                                                          complexity: inlineTicketForm.complexity,
-                                                          effortHours: 0,
-                                                          estimationHours: 0,
-                                                          estimatedViaAbaque: false,
-                                                          history: [],
-                                                        });
-                                                        // Update local state to show the new ticket
-                                                        setWricefObjects((prev) => prev.map((o) => {
-                                                          if (o.id !== wo.id) return o;
-                                                          const items = (o.items || []).map((it) => {
-                                                            if (it.id === targetItem!.id) {
-                                                              return { ...it, tickets: [...(it.tickets || []), created] };
-                                                            }
-                                                            return it;
-                                                          });
-                                                          return { ...o, items };
-                                                        }));
-                                                        setTickets((prev) => [created, ...prev]);
-                                                        setShowInlineTicketForWricef(null);
-                                                        toast.success('Ticket created');
-                                                      } catch {
-                                                        toast.error('Failed to create ticket');
-                                                      } finally {
-                                                        setCreatingInlineTicket(false);
-                                                      }
-                                                    }}
-                                                  >
-                                                    {creatingInlineTicket ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
-                                                  </Button>
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-7 text-xs"
-                                                    onClick={(e) => { e.stopPropagation(); setShowInlineTicketForWricef(null); }}
-                                                  >
-                                                    Cancel
-                                                  </Button>
-                                                </div>
-                                              </div>
-                                            )}
+                                            {/* Ticket creation handled via full modal dialog below */}
 
                                             {ticketCount === 0 && showInlineTicketForWricef !== wo.id ? (
                                               <p className="text-xs text-muted-foreground italic">No tickets yet.</p>
@@ -1530,7 +1443,11 @@ export const ProjectDetails: React.FC = () => {
                       CRITICAL: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
                     };
                     return (
-                      <TableRow key={ticket.id}>
+                      <TableRow
+                        key={ticket.id}
+                        className="cursor-pointer hover:bg-muted/40 transition-colors"
+                        onClick={() => navigate(`${roleBasePath}/tickets/${ticket.id}`)}
+                      >
                         <TableCell className="px-4 py-3">
                           <Badge variant="outline" className="font-mono text-xs">
                             {ticket.ticketCode}
@@ -1576,30 +1493,40 @@ export const ProjectDetails: React.FC = () => {
                             : <span className="text-muted-foreground">—</span>}
                         </TableCell>
                         <TableCell className="px-4 py-3">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                            onClick={async () => {
-                              try {
-                                await TicketsAPI.delete(ticket.id);
-                                setTickets((prev) => prev.filter((t) => t.id !== ticket.id));
-                                // Also remove from wricefObjects state
-                                setWricefObjects((prev) => prev.map((o) => ({
-                                  ...o,
-                                  items: (o.items || []).map((it) => ({
-                                    ...it,
-                                    tickets: (it.tickets || []).filter((t) => t.id !== ticket.id),
-                                  })),
-                                })));
-                                toast.success('Ticket deleted');
-                              } catch {
-                                toast.error('Failed to delete ticket');
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-primary hover:text-primary"
+                              onClick={(e) => { e.stopPropagation(); navigate(`${roleBasePath}/tickets/${ticket.id}`); }}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await TicketsAPI.delete(ticket.id);
+                                  setTickets((prev) => prev.filter((t) => t.id !== ticket.id));
+                                  setWricefObjects((prev) => prev.map((o) => ({
+                                    ...o,
+                                    items: (o.items || []).map((it) => ({
+                                      ...it,
+                                      tickets: (it.tickets || []).filter((t) => t.id !== ticket.id),
+                                    })),
+                                  })));
+                                  toast.success('Ticket deleted');
+                                } catch {
+                                  toast.error('Failed to delete ticket');
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -1954,6 +1881,352 @@ export const ProjectDetails: React.FC = () => {
           </section>
         )}
 
+        {/* ── Full modal for Add Ticket from Objects tab ── */}
+        <Dialog open={showInlineTicketForWricef !== null} onOpenChange={(open) => { if (!open) setShowInlineTicketForWricef(null); }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <TicketIcon className="h-5 w-5 text-primary" />
+                Add Ticket
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="inline-ticket-title">Title *</Label>
+                <Input
+                  id="inline-ticket-title"
+                  value={inlineTicketForm.title}
+                  onChange={(e) => setInlineTicketForm((prev) => ({ ...prev, title: e.target.value }))}
+                  placeholder="Ticket title"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Nature</Label>
+                  <Select value={inlineTicketForm.nature} onValueChange={(val) => setInlineTicketForm((prev) => ({ ...prev, nature: val as TicketNature }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(Object.entries(TICKET_NATURE_LABELS) as [TicketNature, string][]).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Complexity</Label>
+                  <Select value={inlineTicketForm.complexity} onValueChange={(val) => setInlineTicketForm((prev) => ({ ...prev, complexity: val as Ticket['complexity'] }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="SIMPLE">Simple</SelectItem>
+                      <SelectItem value="MOYEN">Moyen</SelectItem>
+                      <SelectItem value="COMPLEXE">Complexe</SelectItem>
+                      <SelectItem value="TRES_COMPLEXE">Très Complexe</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Priority</Label>
+                  <Select value={inlineTicketForm.priority} onValueChange={(val) => setInlineTicketForm((prev) => ({ ...prev, priority: val as Ticket['priority'] }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="LOW">Low</SelectItem>
+                      <SelectItem value="MEDIUM">Medium</SelectItem>
+                      <SelectItem value="HIGH">High</SelectItem>
+                      <SelectItem value="CRITICAL">Critical</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="inline-ticket-due">Due Date</Label>
+                  <Input
+                    id="inline-ticket-due"
+                    type="date"
+                    value={inlineTicketForm.dueDate}
+                    onChange={(e) => setInlineTicketForm((prev) => ({ ...prev, dueDate: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="inline-ticket-effort">Effort (h)</Label>
+                  <Input id="inline-ticket-effort" type="number" min={0} step={0.5}
+                    value={inlineTicketForm.effortHours}
+                    onChange={(e) => setInlineTicketForm((prev) => ({ ...prev, effortHours: Number(e.target.value || 0) }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="inline-ticket-est">Estimation (h)</Label>
+                  <Input id="inline-ticket-est" type="number" min={0} step={0.5}
+                    value={inlineTicketForm.estimationHours}
+                    onChange={(e) => setInlineTicketForm((prev) => ({ ...prev, estimationHours: Number(e.target.value || 0) }))}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Technical Consultant</Label>
+                <Select
+                  value={inlineTicketForm.techConsultantId || '__none'}
+                  onValueChange={(val) => setInlineTicketForm((prev) => ({ ...prev, techConsultantId: val === '__none' ? '' : val }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select technical consultant" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">— Not assigned —</SelectItem>
+                    {techConsultants.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>{u.name} ({u.availabilityPercent}% available)</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Functional Consultant</Label>
+                <Select
+                  value={inlineTicketForm.functionalConsultantId || '__none'}
+                  onValueChange={(val) => setInlineTicketForm((prev) => ({ ...prev, functionalConsultantId: val === '__none' ? '' : val }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select functional consultant" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">— Not assigned —</SelectItem>
+                    {funcConsultants.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>{u.name} ({u.availabilityPercent}% available)</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="inline-ticket-desc">Description</Label>
+                <Textarea
+                  id="inline-ticket-desc"
+                  value={inlineTicketForm.description}
+                  onChange={(e) => setInlineTicketForm((prev) => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                  placeholder="Optional description..."
+                />
+              </div>
+            </div>
+            <DialogFooter className="mt-4 gap-2">
+              <Button variant="outline" onClick={() => setShowInlineTicketForWricef(null)}>Cancel</Button>
+              <Button
+                disabled={creatingInlineTicket || !inlineTicketForm.title.trim()}
+                onClick={async () => {
+                  if (!project || !currentUser || !showInlineTicketForWricef) return;
+                  const wo = wricefObjects.find((o) => o.id === showInlineTicketForWricef);
+                  if (!wo) return;
+                  setCreatingInlineTicket(true);
+                  try {
+                    let targetItem = wo.items?.[0];
+                    if (!targetItem) {
+                      targetItem = await WricefItemsAPI.create({
+                        wricefId: wo.id,
+                        objectId: wo.wricefId + '-OBJ-001',
+                        title: wo.title,
+                        description: '',
+                      });
+                      setWricefObjects((prev) => prev.map((o) =>
+                        o.id === wo.id ? { ...o, items: [{ ...targetItem!, tickets: [] }] } : o
+                      ));
+                    }
+                    const created = await TicketsAPI.create({
+                      projectId: project.id,
+                      createdBy: currentUser.id,
+                      status: 'NEW',
+                      priority: inlineTicketForm.priority,
+                      nature: inlineTicketForm.nature,
+                      title: inlineTicketForm.title.trim(),
+                      description: inlineTicketForm.description.trim(),
+                      dueDate: inlineTicketForm.dueDate || undefined,
+                      wricefItemId: targetItem!.id,
+                      module: wo.module || 'OTHER',
+                      complexity: inlineTicketForm.complexity,
+                      effortHours: inlineTicketForm.effortHours,
+                      estimationHours: inlineTicketForm.estimationHours,
+                      estimatedViaAbaque: false,
+                      assignedTo: inlineTicketForm.techConsultantId || undefined,
+                      assignedToRole: inlineTicketForm.techConsultantId ? 'CONSULTANT_TECHNIQUE' : undefined,
+                      techConsultantId: inlineTicketForm.techConsultantId || undefined,
+                      functionalConsultantId: inlineTicketForm.functionalConsultantId || undefined,
+                      history: [],
+                    });
+                    setWricefObjects((prev) => prev.map((o) => {
+                      if (o.id !== wo.id) return o;
+                      const items = (o.items || []).map((it) => {
+                        if (it.id === targetItem!.id) return { ...it, tickets: [...(it.tickets || []), created] };
+                        return it;
+                      });
+                      return { ...o, items };
+                    }));
+                    setTickets((prev) => [created, ...prev]);
+                    setShowInlineTicketForWricef(null);
+                    toast.success('Ticket created successfully');
+                  } catch {
+                    toast.error('Failed to create ticket');
+                  } finally {
+                    setCreatingInlineTicket(false);
+                  }
+                }}
+              >
+                {creatingInlineTicket ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Creating...</> : 'Create Ticket'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── Create New Object mini-dialog (opened from the ticket form) ── */}
+        <Dialog open={showCreateObjectInTicket} onOpenChange={setShowCreateObjectInTicket}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Plus className="h-5 w-5 text-primary" />
+                Create New Object
+              </DialogTitle>
+            </DialogHeader>
+
+            {/* Project auto-assigned info */}
+            <div className="rounded border border-border/60 bg-muted/30 px-3 py-2 text-sm mb-1">
+              <span className="text-muted-foreground">Project: </span>
+              <span className="font-medium">{project?.name}</span>
+              <span className="ml-2 text-xs text-muted-foreground">(assigned automatically)</span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* Object ID */}
+              <div className="space-y-1.5">
+                <Label htmlFor="new-obj-wricefid">Object ID *</Label>
+                <Input
+                  id="new-obj-wricefid"
+                  value={newObjectInTicketForm.wricefId}
+                  onChange={(e) => setNewObjectInTicketForm((p) => ({ ...p, wricefId: e.target.value }))}
+                  placeholder="e.g. W-001"
+                  className="font-mono"
+                />
+              </div>
+
+              {/* Type */}
+              <div className="space-y-1.5">
+                <Label>Type</Label>
+                <Select
+                  value={newObjectInTicketForm.type || '__none'}
+                  onValueChange={(val) => setNewObjectInTicketForm((p) => ({ ...p, type: val === '__none' ? '' : val }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Type" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">— None —</SelectItem>
+                    {(['W', 'R', 'I', 'C', 'E', 'F'] as WricefType[]).map((t) => (
+                      <SelectItem key={t} value={t}>{t} – {WRICEF_TYPE_LABELS[t]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Title */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="new-obj-title">Title *</Label>
+                <Input
+                  id="new-obj-title"
+                  value={newObjectInTicketForm.title}
+                  onChange={(e) => setNewObjectInTicketForm((p) => ({ ...p, title: e.target.value }))}
+                  placeholder="Object title"
+                />
+              </div>
+
+              {/* Description */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="new-obj-desc">Description</Label>
+                <Textarea
+                  id="new-obj-desc"
+                  value={newObjectInTicketForm.description}
+                  onChange={(e) => setNewObjectInTicketForm((p) => ({ ...p, description: e.target.value }))}
+                  rows={2}
+                  placeholder="Optional description"
+                />
+              </div>
+
+              {/* Complexity */}
+              <div className="space-y-1.5">
+                <Label>Complexity</Label>
+                <Select
+                  value={newObjectInTicketForm.complexity}
+                  onValueChange={(val) => setNewObjectInTicketForm((p) => ({ ...p, complexity: val }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SIMPLE">Simple</SelectItem>
+                    <SelectItem value="MOYEN">Moyen</SelectItem>
+                    <SelectItem value="COMPLEXE">Complexe</SelectItem>
+                    <SelectItem value="TRES_COMPLEXE">Très Complexe</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* SAP Module */}
+              <div className="space-y-1.5">
+                <Label>Module</Label>
+                <Select
+                  value={newObjectInTicketForm.module}
+                  onValueChange={(val) => setNewObjectInTicketForm((p) => ({ ...p, module: val }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(SAP_MODULE_LABELS) as Array<keyof typeof SAP_MODULE_LABELS>).map((m) => (
+                      <SelectItem key={m} value={m}>{m} – {SAP_MODULE_LABELS[m]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <DialogFooter className="mt-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowCreateObjectInTicket(false)}
+                disabled={creatingObjectInTicket}
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={
+                  creatingObjectInTicket ||
+                  !newObjectInTicketForm.wricefId.trim() ||
+                  !newObjectInTicketForm.title.trim()
+                }
+                onClick={async () => {
+                  if (!project) return;
+                  setCreatingObjectInTicket(true);
+                  try {
+                    const created = await WricefObjectsAPI.create({
+                      projectId: project.id,
+                      wricefId: newObjectInTicketForm.wricefId.trim(),
+                      title: newObjectInTicketForm.title.trim(),
+                      description: newObjectInTicketForm.description.trim(),
+                      complexity: newObjectInTicketForm.complexity as WricefObject['complexity'],
+                      type: (newObjectInTicketForm.type || undefined) as WricefObject['type'],
+                      module: (newObjectInTicketForm.module || 'OTHER') as WricefObject['module'],
+                    });
+                    // Add to objects list
+                    setWricefObjects((prev) => [...prev, created]);
+                    // Auto-select the newly created object in the ticket form
+                    const firstItem = created.items?.[0];
+                    setTicketForm((prev) => ({
+                      ...prev,
+                      wricefId: created.id,
+                      wricefItemId: firstItem?.id ?? '',
+                    }));
+                    setShowCreateObjectInTicket(false);
+                    toast.success(`Object "${created.title}" created and selected`);
+                  } catch {
+                    toast.error('Failed to create object');
+                  } finally {
+                    setCreatingObjectInTicket(false);
+                  }
+                }}
+              >
+                {creatingObjectInTicket ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Creating...</> : 'Save Object'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={showCreateTicket} onOpenChange={setShowCreateTicket}>
           <DialogContent className="max-w-5xl sm:max-w-5xl max-h-[88vh] overflow-y-auto">
             <DialogHeader>
@@ -1981,6 +2254,11 @@ export const ProjectDetails: React.FC = () => {
                     <Select
                       value={ticketForm.wricefId || '__none'}
                       onValueChange={(value) => {
+                        if (value === '__create_new') {
+                          setNewObjectInTicketForm({ wricefId: '', title: '', description: '', complexity: 'MOYEN', type: '', module: 'OTHER' });
+                          setShowCreateObjectInTicket(true);
+                          return;
+                        }
                         const woId = value === '__none' ? '' : value;
                         const firstItem = wricefObjects.find((w) => w.id === woId)?.items?.[0];
                         setTicketForm((prev) => ({
@@ -1994,6 +2272,12 @@ export const ProjectDetails: React.FC = () => {
                         <SelectValue placeholder="Select an Object" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="__create_new">
+                          <span className="flex items-center gap-1.5 text-primary font-medium">
+                            <Plus className="h-3.5 w-3.5" />
+                            Create New Object
+                          </span>
+                        </SelectItem>
                         <SelectItem value="__none">No Object</SelectItem>
                         {wricefObjects.map((wo) => (
                           <SelectItem key={wo.id} value={wo.id}>
@@ -2098,9 +2382,45 @@ export const ProjectDetails: React.FC = () => {
                     />
                   </div>
 
-                  <div className="space-y-1.5 sm:col-span-2">
+                  <div className="space-y-1.5">
+                    <Label>Technical Consultant</Label>
+                    <Select
+                      value={ticketForm.techConsultantId || '__none'}
+                      onValueChange={(val) =>
+                        setTicketForm((prev) => ({ ...prev, techConsultantId: val === '__none' ? '' : val }))
+                      }
+                    >
+                      <SelectTrigger><SelectValue placeholder="Select technical consultant" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">— Not assigned —</SelectItem>
+                        {techConsultants.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>{u.name} ({u.availabilityPercent}% available)</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Functional Consultant</Label>
+                    <Select
+                      value={ticketForm.functionalConsultantId || '__none'}
+                      onValueChange={(val) =>
+                        setTicketForm((prev) => ({ ...prev, functionalConsultantId: val === '__none' ? '' : val }))
+                      }
+                    >
+                      <SelectTrigger><SelectValue placeholder="Select functional consultant" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none"> Not assigned </SelectItem>
+                        {funcConsultants.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>{u.name} ({u.availabilityPercent}% available)</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
-                      <Label htmlFor="project-ticket-effort">Effort (Hours)</Label>
+                      <Label htmlFor="project-ticket-estimation">Estimation (Days)</Label>
                       <Button
                         type="button"
                         size="sm"
@@ -2109,29 +2429,77 @@ export const ProjectDetails: React.FC = () => {
                         disabled={!selectedAbaque}
                       >
                         <Calculator className="h-3.5 w-3.5 mr-1" />
-                        Use Abaque Estimate
+                        Abaque
                       </Button>
                     </div>
-                    <Input
-                      id="project-ticket-effort"
-                      type="number"
-                      min={0}
-                      step={0.5}
-                      value={ticketForm.effortHours}
-                      onChange={(event) => {
-                        setTicketForm((prev) => ({
-                          ...prev,
-                          effortHours: Number(event.target.value || 0),
-                        }));
+                    <Select
+                      value={String(ticketForm.estimationHours)}
+                      onValueChange={(val) => {
+                        setTicketForm((prev) => ({ ...prev, estimationHours: Number(val) }));
                         setIsEstimatedByAbaque(false);
                       }}
-                    />
+                    >
+                      <SelectTrigger id="project-ticket-estimation">
+                        <SelectValue placeholder="Select days" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[
+                          { label: '0.5 day (4h)', hours: 4 },
+                          { label: '1 day (8h)', hours: 8 },
+                          { label: '1.5 days (12h)', hours: 12 },
+                          { label: '2 days (16h)', hours: 16 },
+                          { label: '3 days (24h)', hours: 24 },
+                          { label: '4 days (32h)', hours: 32 },
+                          { label: '5 days (40h)', hours: 40 },
+                          { label: '7 days (56h)', hours: 56 },
+                          { label: '10 days (80h)', hours: 80 },
+                          { label: '15 days (120h)', hours: 120 },
+                          { label: '20 days (160h)', hours: 160 },
+                          { label: '30 days (240h)', hours: 240 },
+                        ].map(({ label, hours }) => (
+                          <SelectItem key={hours} value={String(hours)}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {isEstimatedByAbaque && (
                       <Badge variant="secondary" className="inline-flex items-center gap-1">
                         <Scale className="h-3 w-3" />
                         Standard guideline match
                       </Badge>
                     )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="project-ticket-effort">Effort Logged (Days)</Label>
+                    <Select
+                      value={String(ticketForm.effortHours)}
+                      onValueChange={(val) => {
+                        setTicketForm((prev) => ({ ...prev, effortHours: Number(val) }));
+                      }}
+                    >
+                      <SelectTrigger id="project-ticket-effort">
+                        <SelectValue placeholder="Select days" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[
+                          { label: '0 days (0h)', hours: 0 },
+                          { label: '0.5 day (4h)', hours: 4 },
+                          { label: '1 day (8h)', hours: 8 },
+                          { label: '1.5 days (12h)', hours: 12 },
+                          { label: '2 days (16h)', hours: 16 },
+                          { label: '3 days (24h)', hours: 24 },
+                          { label: '4 days (32h)', hours: 32 },
+                          { label: '5 days (40h)', hours: 40 },
+                          { label: '7 days (56h)', hours: 56 },
+                          { label: '10 days (80h)', hours: 80 },
+                          { label: '15 days (120h)', hours: 120 },
+                          { label: '20 days (160h)', hours: 160 },
+                          { label: '30 days (240h)', hours: 240 },
+                        ].map(({ label, hours }) => (
+                          <SelectItem key={hours} value={String(hours)}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-1.5 sm:col-span-2">

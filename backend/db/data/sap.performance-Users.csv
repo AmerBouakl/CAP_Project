@@ -1,0 +1,10 @@
+ID,name,email,role,active,skills,availabilityPercent,teamId,createdAt,modifiedAt
+u1,Jean Dupont,jean.dupont@company.com,ADMIN,true,"Administration,Security,Governance",100,t1,2026-01-01T00:00:00Z,2026-01-01T00:00:00Z
+u2,Marie Martin,marie.martin@company.com,MANAGER,true,"Project Management,Team Leadership,SAP",90,t1,2026-01-01T00:00:00Z,2026-01-01T00:00:00Z
+u3,Pierre Dubois,pierre.dubois@company.com,CONSULTANT_TECHNIQUE,true,"ABAP,Fiori,CAP,Node.js",75,t1,2026-01-01T00:00:00Z,2026-01-01T00:00:00Z
+u4,Sophie Bernard,sophie.bernard@company.com,CONSULTANT_FONCTIONNEL,true,"Business Analysis,SAP MM,Requirements",80,t1,2026-01-01T00:00:00Z,2026-01-01T00:00:00Z
+u5,Luc Moreau,luc.moreau@company.com,CONSULTANT_TECHNIQUE,true,"Java,Integration,BTP",60,t1,2026-01-01T00:00:00Z,2026-01-01T00:00:00Z
+u6,Karim Benali,karim.benali@company.com,PROJECT_MANAGER,true,"Project Planning,Milestone Tracking,Risk Management,SAP PS",85,t1,2026-01-01T00:00:00Z,2026-01-01T00:00:00Z
+u7,Nadia Cherradi,nadia.cherradi@company.com,DEV_COORDINATOR,true,"ABAP,Fiori,Team Coordination,Workload Planning,CAP",90,t1,2026-01-01T00:00:00Z,2026-01-01T00:00:00Z
+u8,Amina Bensouda,amina.bensouda@company.com,CONSULTANT_FONCTIONNEL,true,"SAP FI,Business Analysis,Testing",85,t1,2026-01-01T00:00:00Z,2026-01-01T00:00:00Z
+u9,Yassine Elfarsi,yassine.elfarsi@company.com,CONSULTANT_TECHNIQUE,true,"ABAP,SD Module,Debugging",70,t1,2026-01-01T00:00:00Z,2026-01-01T00:00:00Z
