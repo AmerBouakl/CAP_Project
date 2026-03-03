@@ -1,16 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
 import {
   TicketsAPI,
-  TicketCommentsAPI,
   WricefObjectsAPI,
   ProjectsAPI,
   UsersAPI,
 } from '../../services/odataClient';
 import {
   Ticket,
-  TicketComment,
   TicketStatus,
   WricefObject,
   Project,
@@ -19,8 +17,6 @@ import {
   TICKET_NATURE_LABELS,
   TICKET_COMPLEXITY_LABELS,
   SAP_MODULE_LABELS,
-  USER_ROLE_LABELS,
-  UserRole,
   TicketNature,
   TicketComplexity,
   Priority,
@@ -44,7 +40,6 @@ import {
 } from '../../components/ui/select';
 import {
   ArrowLeft,
-  Send,
   Clock,
   UserIcon,
   MessageSquare,
@@ -70,6 +65,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const statusColor: Record<TicketStatus, string> = {
+  PENDING: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
   NEW: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
   IN_PROGRESS: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
   IN_TEST: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
@@ -85,7 +81,7 @@ const priorityColor: Record<string, string> = {
   CRITICAL: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
 };
 
-const STATUS_ORDER: TicketStatus[] = ['NEW', 'IN_PROGRESS', 'IN_TEST', 'BLOCKED', 'DONE', 'REJECTED'];
+const STATUS_ORDER: TicketStatus[] = ['PENDING', 'NEW', 'IN_PROGRESS', 'IN_TEST', 'BLOCKED', 'DONE', 'REJECTED'];
 
 const eventIcon: Record<string, React.ReactNode> = {
   CREATED: <CircleDot className="h-3.5 w-3.5 text-blue-500" />,
@@ -98,6 +94,7 @@ const eventIcon: Record<string, React.ReactNode> = {
 };
 
 const statusIcon: Record<string, React.ReactNode> = {
+  PENDING: <AlertTriangle className="h-4 w-4" />,
   NEW: <CircleDot className="h-4 w-4" />,
   IN_PROGRESS: <PlayCircle className="h-4 w-4" />,
   IN_TEST: <TestTube className="h-4 w-4" />,
@@ -155,23 +152,27 @@ export const TicketDetail: React.FC = () => {
   const { currentUser } = useAuth();
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [comments, setComments] = useState<TicketComment[]>([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Feedback state (per consultant)
+  const [techFeedback, setTechFeedback] = useState('');
+  const [funcFeedback, setFuncFeedback] = useState('');
+  const [savingTechFeedback, setSavingTechFeedback] = useState(false);
+  const [savingFuncFeedback, setSavingFuncFeedback] = useState(false);
 
   // View / Edit toggle
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
+
+  // History toggle inside Feedback card
+  const [showFeedbackHistory, setShowFeedbackHistory] = useState(false);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [techConsultants, setTechConsultants] = useState<User[]>([]);
   const [funcConsultants, setFuncConsultants] = useState<User[]>([]);
   const [wricefObjects, setWricefObjects] = useState<WricefObject[]>([]);
-
-  const chatEndRef = useRef<HTMLDivElement>(null);
 
   // -----------------------------------------------------------------------
   // Data loading
@@ -194,8 +195,8 @@ export const TicketDetail: React.FC = () => {
       const found = allTickets.find((t) => t.id === ticketId);
       if (found) {
         setTicket(found);
-        const chatMessages = await TicketCommentsAPI.getByTicket(found.id);
-        setComments(chatMessages);
+        setTechFeedback(found.techFeedback ?? '');
+        setFuncFeedback(found.functionalFeedback ?? '');
       }
 
       setProjects(projectData);
@@ -211,10 +212,6 @@ export const TicketDetail: React.FC = () => {
     }
   };
 
-  // Scroll chat to bottom on new messages
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [comments]);
 
   // -----------------------------------------------------------------------
   // Helpers
@@ -295,34 +292,6 @@ export const TicketDetail: React.FC = () => {
     }
   };
 
-  // -----------------------------------------------------------------------
-  // Actions
-  // -----------------------------------------------------------------------
-  const sendMessage = async () => {
-    if (!newMessage.trim() || !ticket || !currentUser) return;
-    setSending(true);
-    try {
-      const created = await TicketCommentsAPI.create({
-        ticketId: ticket.id,
-        userId: currentUser.id,
-        userRole: currentUser.role,
-        message: newMessage.trim(),
-      });
-      setComments((prev) => [...prev, created]);
-      setNewMessage('');
-    } catch {
-      toast.error('Failed to send message');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void sendMessage();
-    }
-  };
 
   // -----------------------------------------------------------------------
   // Derived
@@ -691,76 +660,243 @@ export const TicketDetail: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* ══ MIDDLE – Chat / Messages ══ */}
-        <Card className="xl:col-span-1 flex flex-col" style={{ minHeight: '520px' }}>
-          <CardHeader className="pb-2 pt-4">
+        {/* ══ MIDDLE – Feedback Chat ══ */}
+        <Card className="xl:col-span-1 flex flex-col">
+          <CardHeader className="pb-2 pt-4 shrink-0">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <MessageSquare className="h-4 w-4 text-primary" />
-              Discussion ({comments.length})
-              <span className="ml-auto flex gap-2 text-[10px] font-normal text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Tech
+              Consultant Feedback
+              {currentUser?.role === 'MANAGER' && (
+                <span className="ml-auto text-[10px] font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                  Read-only
                 </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />Func
-                </span>
-              </span>
+              )}
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col flex-1 pb-4 pt-0">
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1 mb-3 max-h-[380px]">
-              {comments.length === 0 && (
-                <p className="text-xs text-muted-foreground italic text-center py-10">
-                  No messages yet. Start the conversation.
-                </p>
-              )}
-              {comments.map((c) => {
-                const role = c.userRole || '';
-                const bubble = roleBubbleColor[role] || defaultBubble;
-                const roleLabel = USER_ROLE_LABELS[role as UserRole] || role;
-                const isMe = c.userId === currentUser?.id;
-                return (
-                  <div key={c.id} className={`flex ${isMe ? 'justify-end' : bubble.align}`}>
-                    <div className={`rounded-xl px-4 py-2.5 max-w-[85%] border ${bubble.bg} space-y-0.5`}>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className={`text-[11px] font-semibold ${bubble.name}`}>
-                          {userName(c.userId)}
-                          {roleLabel && <span className="ml-1 font-normal opacity-70">({roleLabel})</span>}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                          {new Date(c.timestamp).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="text-sm whitespace-pre-wrap">{c.message}</p>
+          <CardContent className="pb-4 flex flex-col gap-3 flex-1">
+
+            {/* ── PENDING approval banner (Project Manager only) ── */}
+            {ticket.status === 'PENDING' && currentUser?.role === 'PROJECT_MANAGER' && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 p-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <p className="text-xs font-medium">This ticket is awaiting your approval.</p>
+                </div>
+                <Button
+                  size="sm"
+                  className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white"
+                  onClick={async () => {
+                    try {
+                      const updated = await TicketsAPI.update(ticket.id, { status: 'NEW' });
+                      setTicket(updated);
+                      toast.success('Ticket confirmed — status set to New');
+                    } catch {
+                      toast.error('Failed to confirm ticket');
+                    }
+                  }}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
+                  Confirm
+                </Button>
+              </div>
+            )}
+
+            {/* ── Chat conversation ── */}
+            <div className="flex flex-col gap-4 min-h-[280px] max-h-[500px] overflow-y-auto pr-1">
+
+              {/* System events threaded in chronologically */}
+              {(() => {
+                // Build a unified timeline: history events + the two feedback "messages"
+                type ChatItem =
+                  | { kind: 'event'; evt: typeof sortedHistory[0]; ts: number }
+                  | { kind: 'feedback'; role: 'tech' | 'func'; text: string; ts: number };
+
+                const items: ChatItem[] = [
+                  ...sortedHistory.map((evt) => ({
+                    kind: 'event' as const,
+                    evt,
+                    ts: new Date(evt.timestamp).getTime(),
+                  })),
+                ];
+
+                // Feedback "messages" shown at the end (most recent timestamp or now)
+                const lastTs = sortedHistory.length
+                  ? new Date(sortedHistory[0].timestamp).getTime()
+                  : Date.now();
+                if (ticket.techFeedback) {
+                  items.push({ kind: 'feedback', role: 'tech', text: ticket.techFeedback, ts: lastTs + 1 });
+                }
+                if (ticket.functionalFeedback) {
+                  items.push({ kind: 'feedback', role: 'func', text: ticket.functionalFeedback, ts: lastTs + 2 });
+                }
+
+                // Sort oldest first for chat display
+                items.sort((a, b) => a.ts - b.ts);
+
+                if (items.length === 0) {
+                  return (
+                    <div className="flex flex-1 items-center justify-center">
+                      <p className="text-xs text-muted-foreground italic">No feedback or activity yet.</p>
                     </div>
+                  );
+                }
+
+                return items.map((item, idx) => {
+                  if (item.kind === 'event') {
+                    const evt = item.evt;
+                    const evtText = (() => {
+                      if (evt.action === 'CREATED') return 'created this ticket';
+                      if (evt.action === 'STATUS_CHANGE') return `status: ${TICKET_STATUS_LABELS[evt.fromValue as TicketStatus] ?? evt.fromValue} → ${TICKET_STATUS_LABELS[evt.toValue as TicketStatus] ?? evt.toValue}`;
+                      if (evt.action === 'ASSIGNED') return `assigned to ${userName(evt.toValue)}`;
+                      if (evt.action === 'PRIORITY_CHANGE') return `priority: ${evt.fromValue} → ${evt.toValue}`;
+                      if (evt.action === 'EFFORT_CHANGE') return `effort: ${evt.fromValue}h → ${evt.toValue}h`;
+                      if (evt.action === 'SENT_TO_TEST') return 'sent to test';
+                      if (evt.action === 'COMMENT' && evt.comment) return evt.comment;
+                      return evt.action;
+                    })();
+
+                    return (
+                      <div key={`evt-${evt.id || idx}`} className="flex justify-center">
+                        <div className="flex items-center gap-1.5 bg-muted/60 rounded-full px-3 py-1 max-w-[90%]">
+                          <span className="shrink-0">{eventIcon[evt.action] || <Activity className="h-3 w-3" />}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            <span className="font-medium text-foreground">{userName(evt.userId)}</span>
+                            {' '}{evtText}
+                          </span>
+                          <span className="text-[9px] text-muted-foreground/60 shrink-0 ml-1">
+                            {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Feedback bubble
+                  const isTech = item.role === 'tech';
+                  const consultantId = isTech ? ticket.techConsultantId : ticket.functionalConsultantId;
+                  const name = userName(consultantId);
+                  const initial = name.charAt(0).toUpperCase();
+
+                  if (isTech) {
+                    return (
+                      <div key={`fb-${item.role}-${idx}`} className="flex items-end gap-2">
+                        {/* Avatar */}
+                        <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-white text-[11px] font-bold shrink-0">
+                          {initial}
+                        </div>
+                        <div className="flex flex-col gap-0.5 max-w-[80%]">
+                          <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold ml-1">
+                            {name} · Technical
+                          </span>
+                          <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-2xl rounded-bl-sm px-3 py-2">
+                            <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{item.text}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div key={`fb-${item.role}-${idx}`} className="flex items-end gap-2 flex-row-reverse">
+                        {/* Avatar */}
+                        <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[11px] font-bold shrink-0">
+                          {initial}
+                        </div>
+                        <div className="flex flex-col gap-0.5 items-end max-w-[80%]">
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mr-1">
+                            {name} · Functional
+                          </span>
+                          <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl rounded-br-sm px-3 py-2">
+                            <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{item.text}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                });
+              })()}
+            </div>
+
+            {/* ── Edit boxes (hidden for MANAGER) ── */}
+            {currentUser?.role !== 'MANAGER' && (
+              <div className="space-y-3 pt-2 border-t border-border">
+
+                {/* Tech feedback input */}
+                {(currentUser?.role === 'CONSULTANT_TECHNIQUE' || currentUser?.role === 'ADMIN') && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wide">
+                      Your technical feedback
+                    </p>
+                    <Textarea
+                      value={techFeedback}
+                      onChange={(e) => setTechFeedback(e.target.value)}
+                      rows={3}
+                      placeholder="Technical feedback, implementation notes, blockers…"
+                      className="resize-none text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      className="w-full"
+                      disabled={savingTechFeedback || techFeedback === (ticket.techFeedback ?? '')}
+                      onClick={async () => {
+                        if (!ticket) return;
+                        setSavingTechFeedback(true);
+                        try {
+                          const updated = await TicketsAPI.update(ticket.id, { techFeedback });
+                          setTicket(updated);
+                          toast.success('Technical feedback saved');
+                        } catch {
+                          toast.error('Failed to save technical feedback');
+                        } finally {
+                          setSavingTechFeedback(false);
+                        }
+                      }}
+                    >
+                      {savingTechFeedback ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Save className="h-4 w-4 mr-1.5" />}
+                      Save Technical Feedback
+                    </Button>
                   </div>
-                );
-              })}
-              <div ref={chatEndRef} />
-            </div>
+                )}
 
-            <Separator className="mb-3" />
+                {/* Functional feedback input */}
+                {(currentUser?.role === 'CONSULTANT_FONCTIONNEL' || currentUser?.role === 'ADMIN') && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">
+                      Your functional feedback
+                    </p>
+                    <Textarea
+                      value={funcFeedback}
+                      onChange={(e) => setFuncFeedback(e.target.value)}
+                      rows={3}
+                      placeholder="Functional feedback, validation notes, test results…"
+                      className="resize-none text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      disabled={savingFuncFeedback || funcFeedback === (ticket.functionalFeedback ?? '')}
+                      onClick={async () => {
+                        if (!ticket) return;
+                        setSavingFuncFeedback(true);
+                        try {
+                          const updated = await TicketsAPI.update(ticket.id, { functionalFeedback: funcFeedback });
+                          setTicket(updated);
+                          toast.success('Functional feedback saved');
+                        } catch {
+                          toast.error('Failed to save functional feedback');
+                        } finally {
+                          setSavingFuncFeedback(false);
+                        }
+                      }}
+                    >
+                      {savingFuncFeedback ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Save className="h-4 w-4 mr-1.5" />}
+                      Save Functional Feedback
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
 
-            {/* Input */}
-            <div className="flex gap-2 items-end">
-              <Textarea
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
-                className="min-h-[60px] resize-none flex-1"
-                rows={2}
-              />
-              <Button
-                size="sm"
-                className="h-10 px-4"
-                disabled={!newMessage.trim() || sending}
-                onClick={() => void sendMessage()}
-              >
-                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
-            </div>
           </CardContent>
         </Card>
 

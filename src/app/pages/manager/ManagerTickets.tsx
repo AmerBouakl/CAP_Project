@@ -75,9 +75,10 @@ const EMPTY_FORM: TicketForm = {
   complexity: 'SIMPLE',
 };
 
-const STATUS_ORDER: TicketStatus[] = ['NEW', 'IN_PROGRESS', 'IN_TEST', 'BLOCKED', 'DONE', 'REJECTED'];
+const STATUS_ORDER: TicketStatus[] = ['PENDING', 'NEW', 'IN_PROGRESS', 'IN_TEST', 'BLOCKED', 'DONE', 'REJECTED'];
 
 const statusColor: Record<TicketStatus, string> = {
+  PENDING: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
   NEW: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
   IN_PROGRESS: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
   IN_TEST: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
@@ -213,7 +214,7 @@ export const ManagerTickets: React.FC = () => {
         assignedToRole: assignedUser?.role,
         priority: form.priority,
         nature: form.nature,
-        status: 'NEW',
+        status: currentUser.role === 'MANAGER' ? 'PENDING' : 'NEW',
         title: form.title.trim(),
         description: form.description.trim(),
         dueDate: form.dueDate || undefined,

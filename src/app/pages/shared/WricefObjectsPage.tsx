@@ -118,6 +118,12 @@ const statusIcon: Record<string, React.ReactNode> = {
   REJECTED: <X className="h-3 w-3" />,
 };
 
+const approvalColor: Record<string, string> = {
+  PENDING: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  APPROVED: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+};
+
 const canManage = (role: UserRole) =>
   ['ADMIN', 'MANAGER', 'PROJECT_MANAGER'].includes(role);
 
@@ -340,6 +346,28 @@ export default function WricefObjectsPage() {
     } catch (err) {
       console.error('Delete failed', err);
       toast.error('Failed to delete');
+    }
+  };
+
+  const handleApproveObject = async (obj: WricefObject) => {
+    try {
+      const updated = await WricefObjectsAPI.update(obj.id, { approvalStatus: 'APPROVED' } as Partial<WricefObject>);
+      setObjects((prev) => prev.map((o) => (o.id === obj.id ? { ...o, approvalStatus: 'APPROVED' } : o)));
+      toast.success(`"${obj.title}" approved`);
+    } catch (err) {
+      console.error('Approve failed', err);
+      toast.error('Failed to approve object');
+    }
+  };
+
+  const handleRejectObject = async (obj: WricefObject) => {
+    try {
+      await WricefObjectsAPI.update(obj.id, { approvalStatus: 'REJECTED' } as Partial<WricefObject>);
+      setObjects((prev) => prev.map((o) => (o.id === obj.id ? { ...o, approvalStatus: 'REJECTED' } : o)));
+      toast.success(`"${obj.title}" rejected`);
+    } catch (err) {
+      console.error('Reject failed', err);
+      toast.error('Failed to reject object');
     }
   };
 
@@ -676,7 +704,8 @@ export default function WricefObjectsPage() {
                   <TableHead className="w-[140px]">Project</TableHead>
                   <TableHead className="w-[80px] text-center">Tickets</TableHead>
                   <TableHead className="w-[80px] text-center">Docs</TableHead>
-                  {isManager && <TableHead className="w-[100px]">Actions</TableHead>}
+                  <TableHead className="w-[110px]">Status</TableHead>
+                  {isManager && <TableHead className="w-[130px]">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -756,35 +785,71 @@ export default function WricefObjectsPage() {
                         <TableCell className="text-sm">{projectName(obj.projectId)}</TableCell>
                         <TableCell className="text-center">{tickets.length}</TableCell>
                         <TableCell className="text-center">{docs.length}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="secondary"
+                            className={`text-xs ${approvalColor[obj.approvalStatus ?? 'PENDING'] ?? ''}`}
+                          >
+                            {obj.approvalStatus === 'APPROVED' ? '✓ Approved'
+                              : obj.approvalStatus === 'REJECTED' ? '✕ Rejected'
+                                : '⏳ Pending'}
+                          </Badge>
+                        </TableCell>
                         {isManager && (
                           <TableCell>
                             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() =>
-                                  setEditingRow({
-                                    id: obj.id,
-                                    wricefId: obj.wricefId,
-                                    type: obj.type ?? '',
-                                    title: obj.title,
-                                    description: obj.description,
-                                    complexity: obj.complexity as TicketComplexity,
-                                    module: obj.module ?? 'OTHER',
-                                  })
-                                }
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-destructive"
-                                onClick={() => handleDeleteObject(obj)}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                              {currentUser.role === 'PROJECT_MANAGER' && obj.approvalStatus === 'PENDING' && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    title="Approve"
+                                    onClick={() => handleApproveObject(obj)}
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+                                    title="Reject"
+                                    onClick={() => handleRejectObject(obj)}
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </Button>
+                                </>
+                              )}
+                              {currentUser.role !== 'PROJECT_MANAGER' && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() =>
+                                      setEditingRow({
+                                        id: obj.id,
+                                        wricefId: obj.wricefId,
+                                        type: obj.type ?? '',
+                                        title: obj.title,
+                                        description: obj.description,
+                                        complexity: obj.complexity as TicketComplexity,
+                                        module: obj.module ?? 'OTHER',
+                                      })
+                                    }
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive"
+                                    onClick={() => handleDeleteObject(obj)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </>
+                              )}
                             </div>
                           </TableCell>
                         )}
@@ -1079,7 +1144,7 @@ function InlineEditRow({
             <SelectValue placeholder="Type" />
           </SelectTrigger>
           <SelectContent>
-            {(['W','R','I','C','E','F'] as WricefType[]).map((t) => (
+            {(['W', 'R', 'I', 'C', 'E', 'F'] as WricefType[]).map((t) => (
               <SelectItem key={t} value={t}>{t} – {WRICEF_TYPE_LABELS[t]}</SelectItem>
             ))}
           </SelectContent>
@@ -1248,170 +1313,170 @@ function ExpandedDetail({
               </Button>
             )}
           </div>
-        {tickets.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic">
-            No tickets linked to this object yet.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {tickets.map((t) => (
-              <div
-                key={t.id}
-                className="rounded-lg border border-border/70 bg-background p-3 hover:shadow-sm transition-shadow cursor-pointer hover:border-primary/40"
-                onClick={() => onTicketClick?.(t.id)}
-              >
-                {/* Row 1: Code, Title, Status, Priority, Delete */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-mono text-xs font-bold text-primary whitespace-nowrap">
-                      {t.ticketCode}
-                    </span>
-                    <span className="font-medium text-sm truncate">{t.title}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Badge
-                      variant="secondary"
-                      className={`text-[10px] ${statusColor[t.status] ?? ''}`}
-                    >
-                      {statusIcon[t.status]}
-                      <span className="ml-1">
-                        {TICKET_STATUS_LABELS[t.status] ?? t.status}
+          {tickets.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic">
+              No tickets linked to this object yet.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {tickets.map((t) => (
+                <div
+                  key={t.id}
+                  className="rounded-lg border border-border/70 bg-background p-3 hover:shadow-sm transition-shadow cursor-pointer hover:border-primary/40"
+                  onClick={() => onTicketClick?.(t.id)}
+                >
+                  {/* Row 1: Code, Title, Status, Priority, Delete */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-mono text-xs font-bold text-primary whitespace-nowrap">
+                        {t.ticketCode}
                       </span>
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] ${priorityColor[t.priority] ?? ''}`}
-                    >
-                      {t.priority}
-                    </Badge>
-                    {onDeleteTicket && (
+                      <span className="font-medium text-sm truncate">{t.title}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Badge
+                        variant="secondary"
+                        className={`text-[10px] ${statusColor[t.status] ?? ''}`}
+                      >
+                        {statusIcon[t.status]}
+                        <span className="ml-1">
+                          {TICKET_STATUS_LABELS[t.status] ?? t.status}
+                        </span>
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] ${priorityColor[t.priority] ?? ''}`}
+                      >
+                        {t.priority}
+                      </Badge>
+                      {onDeleteTicket && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteTicket(t.id);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Row 2: Meta info */}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="font-medium text-foreground/70">Nature:</span>
+                      {TICKET_NATURE_LABELS[t.nature] ?? t.nature}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="font-medium text-foreground/70">Module:</span>
+                      {SAP_MODULE_LABELS[t.module] ?? t.module}
+                    </span>
+                    {t.assignedTo && (
+                      <span className="inline-flex items-center gap-1">
+                        <UserIcon className="h-3 w-3" />
+                        {resolveUserName(t.assignedTo)}
+                      </span>
+                    )}
+                    {t.dueDate && (
+                      <span className="inline-flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {formatDate(t.dueDate)}
+                      </span>
+                    )}
+                    {t.effortHours > 0 && (
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {t.effortHours}h logged
+                      </span>
+                    )}
+                    {t.estimationHours > 0 && (
+                      <span>Est: {t.estimationHours}h</span>
+                    )}
+                  </div>
+
+                  {/* Row 3: Description preview */}
+                  {t.description && (
+                    <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">
+                      {t.description}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ---- Documentation Section ---- */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold flex items-center gap-1.5">
+              <BookOpenText className="h-4 w-4 text-primary" />
+              Documentation ({docs.length})
+            </h4>
+            {onAddDoc && (
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onAddDoc}>
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Add Doc
+              </Button>
+            )}
+          </div>
+          {docs.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic">
+              No documentation linked to this object yet.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {docs.map((d) => (
+                <div
+                  key={d.id}
+                  className="rounded-lg border border-border/70 bg-background p-3 hover:shadow-sm transition-shadow"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm truncate">{d.title}</span>
+                        <Badge variant="outline" className="text-[10px]">
+                          {DOCUMENTATION_OBJECT_TYPE_LABELS[d.type] ?? d.type}
+                        </Badge>
+                      </div>
+                      {d.description && (
+                        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                          {d.description}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                          <UserIcon className="h-3 w-3" />
+                          {resolveUserName(d.authorId)}
+                        </span>
+                        <span>Updated: {formatDate(d.updatedAt ?? d.createdAt)}</span>
+                        {d.attachments.length > 0 && (
+                          <span className="inline-flex items-center gap-1">
+                            <Paperclip className="h-3 w-3" />
+                            {d.attachments.length} file{d.attachments.length !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {onDeleteDoc && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteTicket(t.id);
-                        }}
+                        className="h-6 w-6 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => onDeleteDoc(d.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     )}
                   </div>
                 </div>
-
-                {/* Row 2: Meta info */}
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px] text-muted-foreground">
-                  <span className="inline-flex items-center gap-1">
-                    <span className="font-medium text-foreground/70">Nature:</span>
-                    {TICKET_NATURE_LABELS[t.nature] ?? t.nature}
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <span className="font-medium text-foreground/70">Module:</span>
-                    {SAP_MODULE_LABELS[t.module] ?? t.module}
-                  </span>
-                  {t.assignedTo && (
-                    <span className="inline-flex items-center gap-1">
-                      <UserIcon className="h-3 w-3" />
-                      {resolveUserName(t.assignedTo)}
-                    </span>
-                  )}
-                  {t.dueDate && (
-                    <span className="inline-flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {formatDate(t.dueDate)}
-                    </span>
-                  )}
-                  {t.effortHours > 0 && (
-                    <span className="inline-flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {t.effortHours}h logged
-                    </span>
-                  )}
-                  {t.estimationHours > 0 && (
-                    <span>Est: {t.estimationHours}h</span>
-                  )}
-                </div>
-
-                {/* Row 3: Description preview */}
-                {t.description && (
-                  <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">
-                    {t.description}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        </div>
-
-        {/* ---- Documentation Section ---- */}
-        <div>
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="text-sm font-semibold flex items-center gap-1.5">
-            <BookOpenText className="h-4 w-4 text-primary" />
-            Documentation ({docs.length})
-          </h4>
-          {onAddDoc && (
-            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onAddDoc}>
-              <Plus className="h-3.5 w-3.5 mr-1" />
-              Add Doc
-            </Button>
+              ))}
+            </div>
           )}
-        </div>
-        {docs.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic">
-            No documentation linked to this object yet.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {docs.map((d) => (
-              <div
-                key={d.id}
-                className="rounded-lg border border-border/70 bg-background p-3 hover:shadow-sm transition-shadow"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm truncate">{d.title}</span>
-                      <Badge variant="outline" className="text-[10px]">
-                        {DOCUMENTATION_OBJECT_TYPE_LABELS[d.type] ?? d.type}
-                      </Badge>
-                    </div>
-                    {d.description && (
-                      <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
-                        {d.description}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
-                      <span className="inline-flex items-center gap-1">
-                        <UserIcon className="h-3 w-3" />
-                        {resolveUserName(d.authorId)}
-                      </span>
-                      <span>Updated: {formatDate(d.updatedAt ?? d.createdAt)}</span>
-                      {d.attachments.length > 0 && (
-                        <span className="inline-flex items-center gap-1">
-                          <Paperclip className="h-3 w-3" />
-                          {d.attachments.length} file{d.attachments.length !== 1 ? 's' : ''}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {onDeleteDoc && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => onDeleteDoc(d.id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
         </div>
       </div>
     </div>

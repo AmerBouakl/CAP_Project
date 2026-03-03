@@ -22,7 +22,7 @@ export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type ProjectStatus = 'PLANNED' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
 export type RiskLevel = 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type ValidationStatus = 'PENDING' | 'APPROVED' | 'CHANGES_REQUESTED';
-export type TicketStatus = 'NEW' | 'IN_PROGRESS' | 'IN_TEST' | 'BLOCKED' | 'DONE' | 'REJECTED';
+export type TicketStatus = 'PENDING' | 'NEW' | 'IN_PROGRESS' | 'IN_TEST' | 'BLOCKED' | 'DONE' | 'REJECTED';
 export type Complexity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type CertificationStatus = 'VALID' | 'EXPIRING_SOON' | 'EXPIRED';
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -133,6 +133,7 @@ export const TICKET_NATURE_LABELS: Record<TicketNature, string> = {
 };
 
 export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
+  PENDING: 'Pending Approval',
   NEW: 'New',
   IN_PROGRESS: 'In Progress',
   IN_TEST: 'In Test',
@@ -256,6 +257,8 @@ export interface WricefObject {
   complexity: TicketComplexity;
   /** SAP module (e.g. MM, FI, SD) */
   module?: SAPModule;
+  /** Approval status: PENDING (default) | APPROVED | REJECTED */
+  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
   createdAt: string;
   updatedAt?: string;
   /** Objects (items) within this WRICEF (populated via expand) */
@@ -474,6 +477,10 @@ export interface Ticket {
   complexity: TicketComplexity;
   /** True when estimation was auto-calculated from project abaque */
   estimatedViaAbaque?: boolean;
+  /** Written feedback from the Technical Consultant */
+  techFeedback?: string;
+  /** Written feedback from the Functional Consultant */
+  functionalFeedback?: string;
 }
 
 // TicketGroup is replaced by WricefObject – kept as alias for backward compatibility

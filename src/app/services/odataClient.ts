@@ -45,9 +45,8 @@ import {
 const USE_MOCK_DATA = true; // Set to false when backend is available
 const ODATA_BASE_URL = import.meta.env.VITE_ODATA_BASE_URL || '/odata/v4/performance';
 
-// Backend URL for Tickets/WRICEF/Docs (always real – no mock)
-// Uses Vite proxy in dev: /odata/v4/performance → http://localhost:4004
-const CAP_BACKEND_URL = import.meta.env.VITE_CAP_BACKEND_URL || '/odata/v4/performance';
+const CAP_TICKETS_BASE_URL = '/odata/v4/performance/tickets';
+const CAP_WRICEF_BASE_URL = '/odata/v4/performance/wricef';
 
 // OData v4 Query Options
 export interface ODataQueryOptions {
@@ -155,9 +154,9 @@ async function odataFetch<T>(endpoint: string, options?: RequestInit): Promise<T
 // ---------------------------------------------------------------------------
 // CAP Backend fetch (always real – for Tickets, WRICEF, Docs)
 // ---------------------------------------------------------------------------
-async function capFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+async function capFetch<T>(baseUrl: string, endpoint: string, options?: RequestInit): Promise<T> {
   try {
-    const response = await fetch(`${CAP_BACKEND_URL}${endpoint}`, {
+    const response = await fetch(`${baseUrl}${endpoint}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -511,12 +510,13 @@ export const DeliverablesAPI = {
 // Tickets API – always calls real CAP backend
 export const TicketsAPI = {
   async getAll(): Promise<Ticket[]> {
-    const response = await capFetch<ODataResponse<Ticket>>('/Tickets?$expand=history');
+    const response = await capFetch<ODataResponse<Ticket>>(CAP_TICKETS_BASE_URL, '/Tickets?$expand=history');
     return (response.value || []).map(mapTicketFromOData);
   },
 
   async getByProject(projectId: string): Promise<Ticket[]> {
     const response = await capFetch<ODataResponse<Ticket>>(
+      CAP_TICKETS_BASE_URL,
       `/Tickets?$filter=projectId eq '${projectId}'&$expand=history`
     );
     return (response.value || []).map(mapTicketFromOData);
@@ -524,6 +524,7 @@ export const TicketsAPI = {
 
   async getByWricefItem(wricefItemId: string): Promise<Ticket[]> {
     const response = await capFetch<ODataResponse<Ticket>>(
+      CAP_TICKETS_BASE_URL,
       `/Tickets?$filter=wricefItem_ID eq '${wricefItemId}'&$expand=history`
     );
     return (response.value || []).map(mapTicketFromOData);
@@ -531,7 +532,7 @@ export const TicketsAPI = {
 
   async create(ticket: Omit<Ticket, 'id' | 'createdAt' | 'ticketCode'>): Promise<Ticket> {
     const payload = mapTicketToOData(ticket);
-    const result = await capFetch<Record<string, unknown>>('/Tickets', {
+    const result = await capFetch<Record<string, unknown>>(CAP_TICKETS_BASE_URL, '/Tickets', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -540,7 +541,7 @@ export const TicketsAPI = {
 
   async update(id: string, ticket: Partial<Ticket>): Promise<Ticket> {
     const payload = mapTicketToOData(ticket);
-    const result = await capFetch<Record<string, unknown>>(`/Tickets(${id})`, {
+    const result = await capFetch<Record<string, unknown>>(CAP_TICKETS_BASE_URL, `/Tickets(${id})`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
@@ -548,7 +549,7 @@ export const TicketsAPI = {
   },
 
   async delete(id: string): Promise<void> {
-    await capFetch(`/Tickets(${id})`, { method: 'DELETE' });
+    await capFetch(CAP_TICKETS_BASE_URL, `/Tickets(${id})`, { method: 'DELETE' });
   },
 };
 
@@ -558,6 +559,7 @@ export const TicketsAPI = {
 export const TicketCommentsAPI = {
   async getByTicket(ticketId: string): Promise<TicketComment[]> {
     const response = await capFetch<ODataResponse<Record<string, unknown>>>(
+      CAP_TICKETS_BASE_URL,
       `/TicketComments?$filter=ticket_ID eq '${ticketId}'&$orderby=timestamp asc`
     );
     return (response.value || []).map((c) => ({
@@ -577,7 +579,7 @@ export const TicketCommentsAPI = {
       userRole: comment.userRole || '',
       message: comment.message,
     };
-    const result = await capFetch<Record<string, unknown>>('/TicketComments', {
+    const result = await capFetch<Record<string, unknown>>(CAP_TICKETS_BASE_URL, '/TicketComments', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -597,12 +599,13 @@ export const TicketCommentsAPI = {
 // ---------------------------------------------------------------------------
 export const WricefObjectsAPI = {
   async getAll(): Promise<WricefObject[]> {
-    const response = await capFetch<ODataResponse<WricefObject>>('/WricefObjects?$expand=items($expand=tickets($expand=history)),documents($expand=attachments)');
+    const response = await capFetch<ODataResponse<WricefObject>>(CAP_WRICEF_BASE_URL, '/WricefObjects?$expand=items($expand=tickets($expand=history)),documents($expand=attachments)');
     return (response.value || []).map(mapWricefFromOData);
   },
 
   async getByProject(projectId: string): Promise<WricefObject[]> {
     const response = await capFetch<ODataResponse<WricefObject>>(
+      CAP_WRICEF_BASE_URL,
       `/WricefObjects?$filter=projectId eq '${projectId}'&$expand=items($expand=tickets($expand=history)),documents($expand=attachments)`
     );
     return (response.value || []).map(mapWricefFromOData);
@@ -611,6 +614,7 @@ export const WricefObjectsAPI = {
   async getById(id: string): Promise<WricefObject | null> {
     try {
       const result = await capFetch<Record<string, unknown>>(
+        CAP_WRICEF_BASE_URL,
         `/WricefObjects(${id})?$expand=items($expand=tickets($expand=history)),documents($expand=attachments)`
       );
       return mapWricefFromOData(result);
@@ -620,7 +624,7 @@ export const WricefObjectsAPI = {
   },
 
   async create(obj: Omit<WricefObject, 'id' | 'createdAt' | 'updatedAt' | 'tickets' | 'documents'>): Promise<WricefObject> {
-    const result = await capFetch<Record<string, unknown>>('/WricefObjects', {
+    const result = await capFetch<Record<string, unknown>>(CAP_WRICEF_BASE_URL, '/WricefObjects', {
       method: 'POST',
       body: JSON.stringify(obj),
     });
@@ -628,7 +632,7 @@ export const WricefObjectsAPI = {
   },
 
   async update(id: string, data: Partial<WricefObject>): Promise<WricefObject> {
-    const result = await capFetch<Record<string, unknown>>(`/WricefObjects(${id})`, {
+    const result = await capFetch<Record<string, unknown>>(CAP_WRICEF_BASE_URL, `/WricefObjects(${id})`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
@@ -636,15 +640,16 @@ export const WricefObjectsAPI = {
   },
 
   async delete(id: string): Promise<void> {
-    await capFetch(`/WricefObjects(${id})`, { method: 'DELETE' });
+    await capFetch(CAP_WRICEF_BASE_URL, `/WricefObjects(${id})`, { method: 'DELETE' });
   },
 
   /** Upload WRICEF Excel (base64 encoded) and create objects for a project */
   async uploadExcel(projectId: string, base64File: string): Promise<WricefObject[]> {
-    const result = await capFetch<Record<string, unknown>>('/uploadWricefExcel', {
+    const result = await capFetch<Record<string, unknown>>(CAP_WRICEF_BASE_URL, '/uploadWricefExcel', {
       method: 'POST',
       body: JSON.stringify({ projectId, base64File }),
     });
+    //...
     // The action returns an array
     const arr = (result as unknown as { value?: WricefObject[] }).value ?? (result as unknown as WricefObject[]);
     return Array.isArray(arr) ? arr.map(mapWricefFromOData) : [];
@@ -657,6 +662,7 @@ export const WricefObjectsAPI = {
 export const WricefItemsAPI = {
   async getByWricef(wricefId: string): Promise<WricefItem[]> {
     const response = await capFetch<ODataResponse<Record<string, unknown>>>(
+      CAP_WRICEF_BASE_URL,
       `/WricefItems?$filter=wricef_ID eq '${wricefId}'&$expand=tickets($expand=history)`
     );
     return (response.value || []).map(mapWricefItemFromOData);
@@ -669,7 +675,7 @@ export const WricefItemsAPI = {
       title: item.title,
       description: item.description ?? '',
     };
-    const result = await capFetch<Record<string, unknown>>('/WricefItems', {
+    const result = await capFetch<Record<string, unknown>>(CAP_WRICEF_BASE_URL, '/WricefItems', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -682,7 +688,7 @@ export const WricefItemsAPI = {
     if (data.title !== undefined) payload.title = data.title;
     if (data.description !== undefined) payload.description = data.description;
     if (data.wricefId !== undefined) payload.wricef_ID = data.wricefId;
-    const result = await capFetch<Record<string, unknown>>(`/WricefItems(${id})`, {
+    const result = await capFetch<Record<string, unknown>>(CAP_WRICEF_BASE_URL, `/WricefItems(${id})`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
@@ -690,7 +696,7 @@ export const WricefItemsAPI = {
   },
 
   async delete(id: string): Promise<void> {
-    await capFetch(`/WricefItems(${id})`, { method: 'DELETE' });
+    await capFetch(CAP_WRICEF_BASE_URL, `/WricefItems(${id})`, { method: 'DELETE' });
   },
 };
 
@@ -717,13 +723,13 @@ export const AbaquesAPI = {
 // Documentation Objects API – always calls real CAP backend
 export const DocumentationAPI = {
   async getAll(): Promise<DocumentationObject[]> {
-    const response = await capFetch<ODataResponse<Record<string, unknown>>>('/DocumentationObjects?$expand=attachments');
+    const response = await capFetch<ODataResponse<Record<string, unknown>>>(CAP_WRICEF_BASE_URL, '/DocumentationObjects?$expand=attachments');
     return (response.value || []).map(mapDocFromOData);
   },
 
   async getById(id: string): Promise<DocumentationObject | null> {
     try {
-      const result = await capFetch<Record<string, unknown>>(`/DocumentationObjects(${id})?$expand=attachments`);
+      const result = await capFetch<Record<string, unknown>>(CAP_WRICEF_BASE_URL, `/DocumentationObjects(${id})?$expand=attachments`);
       return mapDocFromOData(result);
     } catch {
       return null;
@@ -732,6 +738,7 @@ export const DocumentationAPI = {
 
   async getByWricefObject(wricefObjectId: string): Promise<DocumentationObject[]> {
     const response = await capFetch<ODataResponse<Record<string, unknown>>>(
+      CAP_WRICEF_BASE_URL,
       `/DocumentationObjects?$filter=wricefObject_ID eq '${wricefObjectId}'&$expand=attachments`
     );
     return (response.value || []).map(mapDocFromOData);
@@ -754,7 +761,7 @@ export const DocumentationAPI = {
         url: a.url,
       })),
     };
-    const result = await capFetch<Record<string, unknown>>('/DocumentationObjects', {
+    const result = await capFetch<Record<string, unknown>>(CAP_WRICEF_BASE_URL, '/DocumentationObjects', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -769,7 +776,7 @@ export const DocumentationAPI = {
     if (data.content !== undefined) payload.content = data.content;
     if (data.wricefObjectId !== undefined) payload.wricefObject_ID = data.wricefObjectId;
 
-    const result = await capFetch<Record<string, unknown>>(`/DocumentationObjects(${id})`, {
+    const result = await capFetch<Record<string, unknown>>(CAP_WRICEF_BASE_URL, `/DocumentationObjects(${id})`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
@@ -777,7 +784,7 @@ export const DocumentationAPI = {
   },
 
   async delete(id: string): Promise<void> {
-    await capFetch(`/DocumentationObjects(${id})`, { method: 'DELETE' });
+    await capFetch(CAP_WRICEF_BASE_URL, `/DocumentationObjects(${id})`, { method: 'DELETE' });
   },
 };
 
@@ -1400,6 +1407,8 @@ function mapTicketFromOData(raw: any): Ticket {
     estimationHours: Number(raw.estimationHours) || 0,
     complexity: raw.complexity ?? 'MOYEN',
     estimatedViaAbaque: raw.estimatedViaAbaque || false,
+    techFeedback: raw.techFeedback || '',
+    functionalFeedback: raw.functionalFeedback || '',
   };
 }
 
@@ -1428,6 +1437,8 @@ function mapTicketToOData(ticket: Partial<Ticket>): Record<string, unknown> {
   if (ticket.estimationHours !== undefined) payload.estimationHours = ticket.estimationHours;
   if (ticket.complexity !== undefined) payload.complexity = ticket.complexity;
   if (ticket.estimatedViaAbaque !== undefined) payload.estimatedViaAbaque = ticket.estimatedViaAbaque;
+  if (ticket.techFeedback !== undefined) payload.techFeedback = ticket.techFeedback;
+  if (ticket.functionalFeedback !== undefined) payload.functionalFeedback = ticket.functionalFeedback;
   return payload;
 }
 
@@ -1436,7 +1447,7 @@ function mapTicketToOData(ticket: Partial<Ticket>): Record<string, unknown> {
 // ---------------------------------------------------------------------------
 export const BackendUsersAPI = {
   async getAll(): Promise<User[]> {
-    const response = await capFetch<ODataResponse<Record<string, unknown>>>('/Users');
+    const response = await capFetch<ODataResponse<Record<string, unknown>>>(CAP_TICKETS_BASE_URL, '/Users');
     return (response.value || []).map((u) => ({
       id: String(u.ID ?? u.id ?? ''),
       name: String(u.name ?? ''),
@@ -1453,6 +1464,7 @@ export const BackendUsersAPI = {
 
   async getByRole(role: User['role']): Promise<User[]> {
     const response = await capFetch<ODataResponse<Record<string, unknown>>>(
+      CAP_TICKETS_BASE_URL,
       `/Users?$filter=role eq '${role}' and active eq true&$orderby=name`
     );
     return (response.value || []).map((u) => ({
@@ -1501,6 +1513,7 @@ function mapWricefFromOData(raw: any): WricefObject {
     description: raw.description ?? '',
     complexity: raw.complexity ?? 'MOYEN',
     module: raw.module || undefined,
+    approvalStatus: raw.approvalStatus || 'PENDING',
     createdAt: raw.createdAt,
     updatedAt: raw.modifiedAt || raw.updatedAt || undefined,
     items: Array.isArray(raw.items) ? raw.items.map(mapWricefItemFromOData) : undefined,

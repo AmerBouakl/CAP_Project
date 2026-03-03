@@ -9,7 +9,7 @@ using { cuid, managed } from '@sap/cds/common';
 // Enums (as string types – CDS enum support)
 // ---------------------------------------------------------------------------
 
-type TicketStatus       : String(20) enum { NEW; IN_PROGRESS; IN_TEST; BLOCKED; DONE; REJECTED; };
+type TicketStatus       : String(20) enum { PENDING; NEW; IN_PROGRESS; IN_TEST; BLOCKED; DONE; REJECTED; };
 type Priority           : String(20) enum { LOW; MEDIUM; HIGH; CRITICAL; };
 type TicketNature       : String(20) enum { WORKFLOW; FORMULAIRE; PROGRAMME; ENHANCEMENT; MODULE; REPORT; };
 type TicketComplexity   : String(20) enum { SIMPLE; MOYEN; COMPLEXE; TRES_COMPLEXE; };
@@ -60,6 +60,7 @@ entity WricefObjects : cuid, managed {
   description    : String(5000);
   complexity     : TicketComplexity  default 'MOYEN';
   module         : SAPModule        default 'OTHER';
+  approvalStatus : String(20)        default 'PENDING';  // PENDING | APPROVED | REJECTED
   // Navigation
   items          : Composition of many WricefItems on items.wricef = $self;
   documents      : Composition of many DocumentationObjects on documents.wricefObject = $self;
@@ -116,6 +117,9 @@ entity Tickets : cuid, managed {
   estimationHours       : Decimal(8,2)    default 0;
   complexity            : TicketComplexity default 'MOYEN';
   estimatedViaAbaque    : Boolean         default false;
+  // Consultant Feedback (each consultant's written assessment)
+  techFeedback          : String(5000);   // Written by CONSULTANT_TECHNIQUE
+  functionalFeedback    : String(5000);   // Written by CONSULTANT_FONCTIONNEL
   // Navigation
   history               : Composition of many TicketEvents on history.ticket = $self;
 }

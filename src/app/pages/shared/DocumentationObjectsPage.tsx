@@ -244,6 +244,41 @@ export const DocumentationObjectsPage: React.FC = () => {
   }
 
   const homePath = currentUser ? homePathByRole[currentUser.role] : '/dashboard';
+  const isPM = currentUser?.role === 'PROJECT_MANAGER';
+
+  const pendingWricef = useMemo(
+    () => wricefObjects.filter((o) => o.approvalStatus === 'PENDING' || !o.approvalStatus),
+    [wricefObjects]
+  );
+
+  const processedWricef = useMemo(
+    () => wricefObjects.filter((o) => o.approvalStatus === 'APPROVED' || o.approvalStatus === 'REJECTED'),
+    [wricefObjects]
+  );
+
+
+  const handleApproveWricef = async (obj: WricefObject) => {
+    try {
+      await WricefObjectsAPI.update(obj.id, { approvalStatus: 'APPROVED' } as any);
+      const updated = await WricefObjectsAPI.getAll();
+      setWricefObjects(updated);
+      toast.success(`Object ${obj.wricefId} approved`);
+    } catch {
+      toast.error('Failed to approve object');
+    }
+  };
+
+  const handleDeclineWricef = async (obj: WricefObject) => {
+    try {
+      await WricefObjectsAPI.update(obj.id, { approvalStatus: 'REJECTED' } as any);
+      const updated = await WricefObjectsAPI.getAll();
+      setWricefObjects(updated);
+      toast.success(`Object ${obj.wricefId} declined`);
+    } catch {
+      toast.error('Failed to decline object');
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -317,26 +352,151 @@ export const DocumentationObjectsPage: React.FC = () => {
           <Card>
             <CardContent className="pt-6">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Objects</p>
-              <p className="text-2xl font-semibold text-foreground">{filteredObjects.length}</p>
+              <p className="text-2xl font-semibold text-foreground">{isPM ? pendingWricef.length : filteredObjects.length}</p>
             </CardContent>
           </Card>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          {(Object.keys(DOCUMENTATION_OBJECT_TYPE_LABELS) as DocumentationObjectType[]).map((type) => (
-            <Card key={type}>
-              <CardContent className="flex items-center justify-between pt-6">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    {DOCUMENTATION_OBJECT_TYPE_LABELS[type]}
-                  </p>
-                  <p className="text-lg font-semibold text-foreground">{countsByType[type]}</p>
-                </div>
-                <BookOpenText className="h-4 w-4 text-primary" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        {isPM && (
+          <Card className="border-amber-200 bg-amber-50/30">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-lg text-amber-800">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-xs text-amber-600">
+                  {pendingWricef.length}
+                </span>
+                Pending Objects for Approval
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {pendingWricef.length === 0 ? (
+                <p className="py-4 text-center text-sm text-muted-foreground">No pending objects awaiting approval.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>WRICEF ID</TableHead>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Project</TableHead>
+                      <TableHead>Complexity</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingWricef.map((obj) => (
+                      <TableRow key={obj.id} className="bg-white/50">
+                        <TableCell className="font-mono font-medium">{obj.wricefId}</TableCell>
+                        <TableCell>{obj.title}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{projectName(obj.projectId)}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="capitalize">
+                            {obj.complexity.toLowerCase()}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-green-200 text-green-700 hover:bg-green-50"
+                              onClick={() => handleApproveWricef(obj)}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-red-200 text-red-700 hover:bg-red-50"
+                              onClick={() => handleDeclineWricef(obj)}
+                            >
+                              Decline
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {isPM && processedWricef.length > 0 && (
+          <Card className="border-border/50 bg-muted/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg text-muted-foreground font-medium">
+                Processed Objects (Approved & Rejected)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>WRICEF ID</TableHead>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Project</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {processedWricef.map((obj) => (
+                    <TableRow key={obj.id}>
+                      <TableCell className="font-mono font-medium">{obj.wricefId}</TableCell>
+                      <TableCell className="text-sm">{obj.title}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{projectName(obj.projectId)}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="secondary"
+                          className={obj.approvalStatus === 'APPROVED' ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-red-100 text-red-700 hover:bg-red-100'}
+                        >
+                          {obj.approvalStatus === 'APPROVED' ? '✓ Approved' : '✕ Rejected'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-xs h-8"
+                          onClick={async () => {
+                            try {
+                              await WricefObjectsAPI.update(obj.id, { approvalStatus: 'PENDING' } as any);
+                              const updated = await WricefObjectsAPI.getAll();
+                              setWricefObjects(updated);
+                              toast.info(`Object ${obj.wricefId} reset to pending`);
+                            } catch {
+                              toast.error('Failed to reset status');
+                            }
+                          }}
+                        >
+                          Reset to Pending
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+
+        {!isPM && (
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            {(Object.keys(DOCUMENTATION_OBJECT_TYPE_LABELS) as DocumentationObjectType[]).map((type) => (
+              <Card key={type}>
+                <CardContent className="flex items-center justify-between pt-6">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      {DOCUMENTATION_OBJECT_TYPE_LABELS[type]}
+                    </p>
+                    <p className="text-lg font-semibold text-foreground">{countsByType[type]}</p>
+                  </div>
+                  <BookOpenText className="h-4 w-4 text-primary" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
         <Card className="overflow-hidden">
           <CardHeader className="border-b border-border/70">
